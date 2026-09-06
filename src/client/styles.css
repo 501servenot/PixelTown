@@ -1,0 +1,40 @@
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Mono:wght@400;700&display=swap");
+
+:root { color-scheme: dark; font-family: "Space Mono", ui-monospace, monospace; color: #f4ecd8; background: #0d1118; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: radial-gradient(circle at 80% -20%, #203a42 0, transparent 42%), #0d1118; }
+button { font: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+.shell { max-width: 1320px; margin: 0 auto; padding: 34px 28px 24px; }
+.topbar { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin-bottom: 24px; }
+.eyebrow, .kicker { color: #7ecbd3; letter-spacing: .14em; font-size: 10px; margin: 0 0 10px; }
+h1, h2, p { margin-top: 0; }
+h1 { font-family: "Press Start 2P", monospace; font-size: clamp(22px, 3vw, 38px); line-height: 1.35; margin-bottom: 10px; color: #ffe2a3; text-shadow: 4px 4px #3d2730; }
+h2 { font-size: 18px; margin-bottom: 0; color: #f7f0de; }
+.subtitle { color: #91a3a5; font-size: 12px; margin: 0; }
+.world-clock { display: flex; gap: 10px; align-items: center; color: #9cb4b1; font-size: 11px; white-space: nowrap; }
+.world-clock strong { color: #ffe2a3; font-size: 18px; margin-left: 8px; }
+.live-dot, .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #7fe09b; box-shadow: 0 0 12px #7fe09b; display: inline-block; }
+.card { background: rgba(20, 29, 37, .92); border: 1px solid #2b4248; box-shadow: 8px 8px 0 rgba(4, 8, 13, .42); }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, .75fr); gap: 18px; }
+.game-card, .agent-card, .observation-card, .log-card { padding: 20px; }
+.card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.state-pill, .agent-badge, .json-tag, .live-label { border: 1px solid #416268; color: #8bc9c0; padding: 5px 8px; font-size: 10px; letter-spacing: .08em; }
+.agent-badge { color: #75d7ff; border-color: #3c7993; }
+.game-host { width: 100%; min-height: 470px; overflow: hidden; background: #101820; border: 1px solid #20343c; image-rendering: pixelated; }
+.game-host canvas { display: block; width: 100% !important; height: auto !important; image-rendering: pixelated; }
+.map-caption { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 13px; color: #afc0ba; font-size: 10px; }
+.map-caption span { display: inline-flex; align-items: center; gap: 6px; }
+.caption-muted { color: #617477; margin-left: auto; }
+.legend-dot { width: 8px; height: 8px; display: inline-block; background: #75d7ff; }
+.legend-dot.quest { background: #f07878; }.legend-dot.resource { background: #8fd694; }
+.agent-status { display: flex; gap: 8px; align-items: center; color: #8bd4a4; font-size: 11px; margin-bottom: 18px; text-transform: uppercase; }.status-sep { color: #526b6d; }
+.stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid #24383e; color: #789095; font-size: 11px; }.stat-row strong { color: #f3ddad; }
+.inventory-box { padding: 14px; margin: 18px 0; background: #111b22; border: 1px solid #263b42; }.inventory-box .kicker { margin-bottom: 9px; }.inventory-item { display: flex; justify-content: space-between; color: #d4e2d1; font-size: 12px; }.inventory-item strong { color: #8fd694; }.empty { color: #617477; font-size: 11px; margin: 8px 0 0; }
+.primary-button { width: 100%; border: 0; padding: 13px; color: #182028; background: #f4c96d; font-weight: 700; box-shadow: 4px 4px 0 #8d5e4d; }.primary-button:hover { background: #ffe09a; }
+.button-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 10px; }.button-row button { border: 1px solid #3b5960; color: #bcd2cd; background: #17252c; padding: 9px; }.button-row button:hover { border-color: #7ecbd3; color: #fff; }.secondary-actions { grid-template-columns: 1fr 1fr; }.secondary-actions button { font-size: 10px; }
+.lower-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }.helper { color: #758d90; font-size: 11px; line-height: 1.6; }.entity-list, .event-list { border-top: 1px solid #263b42; }.entity-row, .event-row { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: 1px solid #203339; font-size: 11px; }.entity-row > div { min-width: 0; flex: 1; }.entity-row strong { display: block; color: #e7d8b5; }.entity-row small { display: block; color: #70878b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }.entity-row code { color: #78b8c0; font-size: 10px; }.entity-icon { width: 10px; height: 10px; background: #f1c66d; flex: 0 0 auto; }.entity-icon.quest { background: #f07878; }.entity-icon.resource { background: #8fd694; }.action-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 14px; }.action-chips span { color: #8bc9c0; border: 1px solid #31575a; padding: 5px 8px; font-size: 10px; }
+.live-label { color: #7fe09b; border-color: #3d7752; }.decision-box { padding: 12px; margin-bottom: 14px; background: #17272b; border-left: 3px solid #7ecbd3; }.decision-box .kicker { margin-bottom: 7px; }.decision-box strong { display: block; color: #f4d68c; font-size: 12px; }.decision-box p { color: #9db4ae; font-size: 11px; line-height: 1.5; margin: 6px 0 0; }.event-row { align-items: flex-start; color: #adc0b8; line-height: 1.45; }.event-time { color: #6d8f90; min-width: 38px; }.error-banner { background: #442b32; color: #ffb4a9; border: 1px solid #995554; padding: 10px 12px; margin-bottom: 18px; font-size: 11px; }
+footer { display: flex; justify-content: space-between; gap: 12px; color: #53696d; font-size: 10px; margin-top: 22px; }
+@media (max-width: 900px) { .hero-grid, .lower-grid { grid-template-columns: 1fr; }.game-host { min-height: 0; }.topbar { align-items: flex-start; flex-direction: column; }.caption-muted { margin-left: 0; } }
+@media (max-width: 520px) { .shell { padding: 24px 14px; }.game-card, .agent-card, .observation-card, .log-card { padding: 15px; } footer { flex-direction: column; } }
