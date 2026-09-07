@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "tile": {
+    "width": 64,
+    "height": 32,
+    "projection": "isometric-2:1"
+  },
+  "assets": [
+    {
+      "id": "building-tower",
+      "file": "tower.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "defaultFootprint": [
+        2,
+        2
+      ],
+      "source": "AI-generated original"
+    },
+    {
+      "id": "building-brick",
+      "file": "brick.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "defaultFootprint": [
+        2,
+        2
+      ],
+      "source": "AI-generated original"
+    },
+    {
+      "id": "building-office",
+      "file": "office.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "defaultFootprint": [
+        3,
+        2
+      ],
+      "source": "AI-generated original"
+    },
+    {
+      "id": "vehicle-car",
+      "file": "car.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "vehicle",
+      "defaultFootprint": [
+        1,
+        0.5
+      ],
+      "source": "AI-generated original"
+    },
+    {
+      "id": "reference-building-01",
+      "file": "reference-building-01.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-building-02",
+      "file": "reference-building-02.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-building-03",
+      "file": "reference-building-03.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-building-04",
+      "file": "reference-building-04.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-building-05",
+      "file": "reference-building-05.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-building-06",
+      "file": "reference-building-06.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-building-07",
+      "file": "reference-building-07.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-building-08",
+      "file": "reference-building-08.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "building",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-vehicle-09",
+      "file": "reference-vehicle-09.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "vehicle",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-vehicle-10",
+      "file": "reference-vehicle-10.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "vehicle",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-vehicle-11",
+      "file": "reference-vehicle-11.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "vehicle",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    },
+    {
+      "id": "reference-vehicle-12",
+      "file": "reference-vehicle-12.png",
+      "anchor": [
+        0.5,
+        1
+      ],
+      "kind": "vehicle",
+      "source": "AI-generated original; extracted from generated sprite sheet"
+    }
+  ],
+  "generatedAt": "2026-09-06",
+  "license": "Project-owned generated assets; no third-party pixels used",
+  "runtime": "Phaser 4 image textures with pixelArt/nearest filtering"
+}

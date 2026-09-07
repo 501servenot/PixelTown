@@ -13,6 +13,7 @@ import {
   manhattanDistance,
 } from "../shared/protocol";
 import { planNextAction } from "./planner";
+import type { DurableWorldState } from "./supabase";
 
 const MAX_EVENTS = 24;
 const OBSERVATION_RADIUS = 5;
@@ -95,9 +96,9 @@ function createAgent(): AgentState {
 
 export class WorldRuntime {
   readonly worldId = WORLD_ID;
-  readonly worldName = "晨雾小镇";
-  readonly width = 14;
-  readonly height = 10;
+  worldName = "晨雾小镇";
+  width = 22;
+  height = 14;
 
   private worldTime = 8 * 60;
   private stateVersion = 0;
@@ -109,6 +110,23 @@ export class WorldRuntime {
   private readonly listeners = new Set<(snapshot: WorldSnapshot) => void>();
   private readonly requestCache = new Map<string, CommandResult>();
   private timer?: ReturnType<typeof setInterval>;
+
+  hydrate(state: DurableWorldState): void {
+    if (state.world?.name) this.worldName = state.world.name;
+    if (Number.isFinite(state.world?.width)) this.width = Math.max(1, Number(state.world?.width));
+    if (Number.isFinite(state.world?.height)) this.height = Math.max(1, Number(state.world?.height));
+    if (Number.isFinite(state.world?.worldTime)) this.worldTime = Math.max(0, Number(state.world?.worldTime));
+    if (Number.isFinite(state.world?.stateVersion)) this.stateVersion = Math.max(0, Number(state.world?.stateVersion));
+
+    // Keep the built-in starter side when a partially seeded MVP only has entities or agents.
+    if (state.entities.length > 0) {
+      this.entities.splice(0, this.entities.length, ...clone(state.entities));
+    }
+    if (state.agents.length > 0) {
+      this.agents.clear();
+      for (const agent of state.agents) this.agents.set(agent.id, clone(agent));
+    }
+  }
 
   getSnapshot(): WorldSnapshot {
     return clone({

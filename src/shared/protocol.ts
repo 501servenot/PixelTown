@@ -1,6 +1,16 @@
 export const WORLD_ID = "starter-town";
 export const AGENT_ID = "agent-1";
 
+export type TimeSegment = "dawn" | "noon" | "dusk" | "night";
+
+export function timeSegmentForMinutes(totalMinutes: number): TimeSegment {
+  const minutes = ((Math.floor(totalMinutes) % (24 * 60)) + 24 * 60) % (24 * 60);
+  if (minutes >= 5 * 60 && minutes < 11 * 60) return "dawn";
+  if (minutes >= 11 * 60 && minutes < 17 * 60) return "noon";
+  if (minutes >= 17 * 60 && minutes < 20 * 60) return "dusk";
+  return "night";
+}
+
 export type Direction = "north" | "south" | "east" | "west";
 export type EntityKind = "landmark" | "resource" | "quest";
 export type AgentStatus = "idle" | "thinking" | "moving";

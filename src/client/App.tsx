@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WheelEvent as ReactWheelEvent } from "react";
 import type {
   AgentAction,
   AgentDecision,
@@ -7,8 +8,39 @@ import type {
   WorldEvent,
   WorldSnapshot,
 } from "../shared/protocol";
-import { AGENT_ID } from "../shared/protocol";
+import { AGENT_ID, timeSegmentForMinutes } from "../shared/protocol";
 import { TownGame } from "./game/TownScene";
+
+type TimeSegment = "auto" | "dawn" | "noon" | "dusk" | "night";
+
+const TIME_SEGMENTS: ReadonlyArray<{ id: TimeSegment; label: string; hint: string }> = [
+  { id: "auto", label: "自动", hint: "跟随世界时间" },
+  { id: "dawn", label: "清晨", hint: "05:00–10:59" },
+  { id: "noon", label: "正午", hint: "11:00–16:59" },
+  { id: "dusk", label: "傍晚", hint: "17:00–19:59" },
+  { id: "night", label: "夜间", hint: "20:00–04:59" },
+];
+
+const MAP_BACKGROUNDS: Record<Exclude<TimeSegment, "auto">, string> = {
+  dawn: "#1e292e",
+  noon: "#1c272c",
+  dusk: "#3f2d34",
+  night: "#182240",
+};
+
+const ZOOM_MIN = 0.55;
+const ZOOM_MAX = 3.2;
+const ZOOM_STEP = 0.1;
+
+function clampZoom(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(value.toFixed(2))));
+}
+
+function timeSegmentLabel(segment: TimeSegment, worldTime: number): string {
+  const selected = segment === "auto" ? timeSegmentForMinutes(worldTime) : segment;
+  return TIME_SEGMENTS.find((item) => item.id === selected)?.label ?? "自动";
+}
 
 function formatTime(totalMinutes: number): string {
   const minutes = totalMinutes % (24 * 60);
@@ -17,9 +49,24 @@ function formatTime(totalMinutes: number): string {
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
-  const body = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? `请求失败 (${response.status})`);
-  return body;
+  const raw = await response.text();
+  let body: unknown;
+  if (raw.trim()) {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      if (!response.ok) throw new Error(`请求失败 (${response.status})`);
+      throw new Error("服务器返回了无效响应");
+    }
+  }
+  if (!response.ok) {
+    const message = body && typeof body === "object" && "error" in body && typeof body.error === "string"
+      ? body.error
+      : `请求失败 (${response.status})`;
+    throw new Error(message);
+  }
+  if (body === undefined) throw new Error("服务器返回空响应");
+  return body as T;
 }
 
 function actionLabel(action: AgentAction): string {
@@ -36,6 +83,10 @@ export default function App() {
   const [error, setError] = useState("");
   const gameHost = useRef<HTMLDivElement>(null);
   const game = useRef<TownGame | undefined>(undefined);
+  const zoomRef = useRef(1);
+  const [zoom, setZoom] = useState(1);
+  const [timeSegment, setTimeSegment] = useState<TimeSegment>("auto");
+  const [activeTool, setActiveTool] = useState<"agent" | "observation" | "events" | null>(null);
 
   const refreshObservation = useCallback(async () => {
     const next = await api<Observation>(`/api/agents/${AGENT_ID}/observation`);
@@ -53,7 +104,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    refreshAll().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "无法连接服务器"));
+    refreshAll()
+      .then(() => setError(""))
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "无法连接服务器"));
     // ponytail: connect directly in local dev; production can serve the socket behind the same origin.
     const socketUrl = import.meta.env.DEV
       ? "ws://127.0.0.1:3001/ws"
@@ -67,15 +120,10 @@ export default function App() {
         setLogs(next.recentEvents);
       }
     };
-    // HTTP polling is a small, reliable fallback for restrictive dev proxies.
+    // HTTP polling is a small, reliable fallback for restrictive dev proxies and startup races.
     // The same endpoint can be replaced by room broadcasts when multiplayer arrives.
     const poll = window.setInterval(() => {
-      api<WorldSnapshot>("/api/world/snapshot")
-        .then((next) => {
-          setSnapshot(next);
-          setLogs(next.recentEvents);
-        })
-        .catch(() => undefined);
+      refreshAll().then(() => setError("")).catch(() => undefined);
     }, 2000);
     socket.onerror = () => undefined;
     return () => {
@@ -87,6 +135,9 @@ export default function App() {
   useEffect(() => {
     if (!gameHost.current) return;
     game.current = new TownGame(gameHost.current);
+    const initialZoom = clampZoom(game.current.getZoom());
+    zoomRef.current = initialZoom;
+    setZoom(initialZoom);
     return () => {
       game.current?.destroy();
       game.current = undefined;
@@ -96,6 +147,13 @@ export default function App() {
   useEffect(() => {
     if (snapshot) game.current?.setSnapshot(snapshot);
   }, [snapshot]);
+
+  useEffect(() => {
+    const resolved = timeSegment === "auto"
+      ? timeSegmentForMinutes(snapshot?.worldTime ?? 480)
+      : timeSegment;
+    game.current?.setTimeOfDay(resolved);
+  }, [snapshot?.worldTime, timeSegment]);
 
   const agent = snapshot?.agents.find((item) => item.id === AGENT_ID);
   const nearby = observation?.nearbyEntities ?? [];
@@ -137,13 +195,39 @@ export default function App() {
 
   const inspectTarget = nearby.find((entity) => entity.kind === "quest") ?? nearby[0];
 
+  function applyZoom(value: number): void {
+    const requested = clampZoom(value);
+    const next = clampZoom(game.current?.setZoom(requested) ?? requested);
+    zoomRef.current = next;
+    setZoom(next);
+  }
+
+  function fitMap(): void {
+    const next = clampZoom(game.current?.fitMap() ?? 1);
+    zoomRef.current = next;
+    setZoom(next);
+  }
+
+  function handleMapWheel(event: ReactWheelEvent<HTMLDivElement>): void {
+    event.preventDefault();
+    applyZoom(zoomRef.current + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+  }
+
+  function selectTimeSegment(segment: TimeSegment): void {
+    setTimeSegment(segment);
+  }
+
+  const activeTimeSegment = timeSegment === "auto"
+    ? timeSegmentForMinutes(snapshot?.worldTime ?? 480)
+    : timeSegment;
+
   return (
     <main className="shell">
       <header className="topbar">
         <div>
           <p className="eyebrow">PIXELTOWN / MVP-01</p>
           <h1>像素小镇</h1>
-          <p className="subtitle">一个可被 Agent 观察、理解、行动的微型世界。</p>
+          <p className="subtitle">区块化海洋平面 · 中央陆地城市 · 每栋楼与车辆都能点选查看。</p>
         </div>
         <div className="world-clock">
           <span className="live-dot" />
@@ -159,20 +243,57 @@ export default function App() {
           <div className="card-heading">
             <div>
               <span className="kicker">WORLD VIEW</span>
-              <h2>晨雾小镇</h2>
+              <h2>光町世界</h2>
             </div>
             <span className="state-pill">state v{snapshot?.stateVersion ?? 0}</span>
           </div>
-          <div ref={gameHost} className="game-host" aria-label="像素小镇地图" />
+          <div className="map-toolbar" aria-label="地图显示控制">
+            <div className="time-tabs" role="group" aria-label="光照时段">
+              <span className="toolbar-label">光照</span>
+              {TIME_SEGMENTS.map((item) => (
+                <button
+                  type="button"
+                  className={timeSegment === item.id ? "active" : ""}
+                  key={item.id}
+                  title={item.hint}
+                  aria-pressed={timeSegment === item.id}
+                  onClick={() => selectTimeSegment(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="zoom-control" role="group" aria-label="地图缩放">
+              <span className="toolbar-label">缩放</span>
+              <button type="button" aria-label="缩小地图" onClick={() => applyZoom(zoom - ZOOM_STEP)} disabled={zoom <= ZOOM_MIN}>−</button>
+              <output aria-live="polite">{Math.round(zoom * 100)}%</output>
+              <button type="button" aria-label="放大地图" onClick={() => applyZoom(zoom + ZOOM_STEP)} disabled={zoom >= ZOOM_MAX}>＋</button>
+              <button type="button" className="fit-button" onClick={fitMap}>适配</button>
+            </div>
+          </div>
+          <div
+            ref={gameHost}
+            className="game-host"
+            aria-label="像素小镇地图"
+            style={{ backgroundColor: MAP_BACKGROUNDS[activeTimeSegment] }}
+            onWheel={handleMapWheel}
+          />
           <div className="map-caption">
             <span><i className="legend-dot agent" />Agent</span>
             <span><i className="legend-dot quest" />任务</span>
             <span><i className="legend-dot resource" />资源</span>
-            <span className="caption-muted">14 × 10 格 · 等距视角</span>
+            <span className="caption-muted">
+              无限区块 · 中央陆地 · {Math.round(zoom * 100)}% · {timeSegmentLabel(timeSegment, snapshot?.worldTime ?? 480)}
+            </span>
           </div>
         </div>
 
-        <aside className="agent-card card">
+          <aside className="tool-rail" aria-label="世界工具">
+            <button type="button" className={activeTool === "agent" ? "active" : ""} onClick={() => setActiveTool(activeTool === "agent" ? null : "agent")} aria-label="打开 Agent 工具">A</button>
+            <button type="button" onClick={() => document.getElementById("observation-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })} aria-label="查看 Agent 观察">◉</button>
+            <button type="button" onClick={() => document.getElementById("event-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })} aria-label="查看世界事件">≡</button>
+          </aside>
+          <aside className={`agent-card card tool-drawer ${activeTool === "agent" ? "open" : ""}`}>
           <div className="card-heading">
             <div>
               <span className="kicker">AGENT CONSOLE</span>
@@ -202,13 +323,13 @@ export default function App() {
       </section>
 
       <section className="lower-grid">
-        <div className="card observation-card">
+        <div id="observation-panel" className="card observation-card">
           <div className="card-heading"><div><span className="kicker">OBSERVATION</span><h2>Agent 看到什么</h2></div><span className="json-tag">JSON</span></div>
           <p className="helper">服务端按距离裁剪世界信息；模型只会收到这份结构化观察。</p>
           <div className="entity-list">{nearby.map((entity) => <div className="entity-row" key={entity.id}><span className={`entity-icon ${entity.kind}`} /> <div><strong>{entity.name}</strong><small>{entity.description}</small></div><code>({entity.position.x},{entity.position.y})</code></div>)}{!nearby.length && <p className="empty">等待观察数据…</p>}</div>
           <div className="action-chips">{observation?.availableActions.map((action) => <span key={action}>{action}</span>)}</div>
         </div>
-        <div className="card log-card">
+        <div id="event-panel" className="card log-card">
           <div className="card-heading"><div><span className="kicker">EVENT STREAM</span><h2>世界事件</h2></div><span className="live-label">LIVE</span></div>
           {decision && <div className="decision-box"><span className="kicker">LAST DECISION</span><strong>{actionLabel(decision.action)}</strong><p>{decision.rationale}</p></div>}
           <div className="event-list">{[...logs].reverse().map((event) => <div className="event-row" key={event.id}><span className="event-time">{formatTime(event.worldTime)}</span><span>{event.message}</span></div>)}{!logs.length && <p className="empty">世界还没有事件。</p>}</div>

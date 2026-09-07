@@ -2,9 +2,42 @@ import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import { isAgentAction, ServerMessage, WORLD_ID } from "../shared/protocol";
 import { WorldRuntime } from "./runtime";
+import { createSupabaseRepository } from "./supabase";
+
+if (typeof process.loadEnvFile === "function") {
+  try {
+    process.loadEnvFile(".env");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
 
 const PORT = Number(process.env.PORT ?? 3001);
 const runtime = new WorldRuntime();
+const persistence = createSupabaseRepository();
+
+if (!persistence) {
+  const configuredKey = [process.env.SUPABASE_SECRET_KEY, process.env.SUPABASE_SERVER_KEY, process.env.SUPABASE_SERVICE_ROLE_KEY]
+    .find((value) => value?.trim());
+  console.warn(
+    configuredKey?.trim().startsWith("sb_publishable_")
+      ? "[supabase] disabled: use a server-only sb_secret_... key, not the sb_publishable_... key"
+      : "[supabase] disabled: fill SUPABASE_URL and SUPABASE_SECRET_KEY in .env",
+  );
+}
+
+const persistenceStatus = (): unknown => persistence?.getStatus() ?? { enabled: false, state: "disabled" };
+
+async function hydrateAndBootstrap(): Promise<void> {
+  if (!persistence) return;
+  const loaded = await persistence.load(WORLD_ID);
+  if (loaded?.state) runtime.hydrate(loaded.state);
+  if (loaded && !loaded.found && persistence.shouldBootstrap()) await persistence.persist(runtime.getSnapshot());
+}
+
+async function persistAfterCommand(): Promise<void> {
+  if (persistence) await persistence.persist(runtime.getSnapshot());
+}
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, {
@@ -13,6 +46,10 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
     "cache-control": "no-store",
   });
   response.end(JSON.stringify(body));
+}
+
+function errorStatus(error: unknown, fallback: number): number {
+  return error instanceof Error && error.message.startsWith("[supabase]") ? 503 : fallback;
 }
 
 async function readJson(request: IncomingMessage): Promise<Record<string, unknown>> {
@@ -40,7 +77,12 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   }
 
   if (request.method === "GET" && url.pathname === "/api/health") {
-    sendJson(response, 200, { ok: true, service: "pixeltown-server", worldId: WORLD_ID });
+    sendJson(response, 200, {
+      ok: true,
+      service: "pixeltown-server",
+      worldId: WORLD_ID,
+      persistence: persistenceStatus(),
+    });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/world/snapshot") {
@@ -66,18 +108,16 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
         sendJson(response, 400, { error: "action is not a valid AgentAction" });
         return;
       }
-      sendJson(
-        response,
-        200,
-        runtime.executeCommand(
-          decodeURIComponent(commandMatch[1]),
-          body.action,
-          String(body.clientRequestId ?? ""),
-          typeof body.expectedStateVersion === "number" ? body.expectedStateVersion : undefined,
-        ),
+      const result = runtime.executeCommand(
+        decodeURIComponent(commandMatch[1]),
+        body.action,
+        String(body.clientRequestId ?? ""),
+        typeof body.expectedStateVersion === "number" ? body.expectedStateVersion : undefined,
       );
+      if (result.ok) await persistAfterCommand();
+      sendJson(response, 200, result);
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid request" });
+      sendJson(response, errorStatus(error, 400), { error: error instanceof Error ? error.message : "Invalid request" });
     }
     return;
   }
@@ -85,9 +125,11 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   const runMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/run$/);
   if (request.method === "POST" && runMatch) {
     try {
-      sendJson(response, 200, runtime.runAgentTurn(decodeURIComponent(runMatch[1])));
+      const result = runtime.runAgentTurn(decodeURIComponent(runMatch[1]));
+      if (result.result.ok) await persistAfterCommand();
+      sendJson(response, 200, result);
     } catch (error) {
-      sendJson(response, 404, { error: error instanceof Error ? error.message : "Agent not found" });
+      sendJson(response, errorStatus(error, 404), { error: error instanceof Error ? error.message : "Agent not found" });
     }
     return;
   }
@@ -113,16 +155,25 @@ runtime.subscribe((snapshot) => {
   }
 });
 
-runtime.start();
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`PixelTown server listening on http://127.0.0.1:${PORT}`);
-});
+async function main(): Promise<void> {
+  await hydrateAndBootstrap();
+  runtime.start();
+  server.listen(PORT, "127.0.0.1", () => {
+    console.log(`PixelTown server listening on http://127.0.0.1:${PORT}`);
+  });
+}
 
-function shutdown(): void {
+async function shutdown(): Promise<void> {
   runtime.stop();
+  if (persistence) await persistence.persist(runtime.getSnapshot());
   wss.close();
   server.close(() => process.exit(0));
 }
 
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+process.once("SIGINT", () => void shutdown());
+process.once("SIGTERM", () => void shutdown());
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

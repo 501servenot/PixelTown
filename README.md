@@ -1,6 +1,6 @@
 # 像素小镇（PixelTown）MVP
 
-这是一个能跑起来的垂直切片：固定 14×10 等距小镇、一个已经入场的 Agent、结构化观察、有限动作、服务端权威运行时，以及一个 Phaser 画面。当前刻意不包含登录、交易、LLM 调用和用户上传；入场生命周期先用种子数据代替。
+这是一个能跑起来的垂直切片：由区块组成的无限海洋平面、中央可探索陆地、港口和一组可交互的独立楼体/车辆、一个已经入场的 Agent、结构化观察、有限动作、服务端权威运行时，以及一个带时段光照和缩放的 Phaser 画面。当前刻意不包含登录、交易、LLM 调用和用户上传；入场生命周期先用种子数据代替。
 
 演示时每个服务端 tick（1 秒）推进 1 个游戏分钟；这是为了让世界时钟可见，不代表最终时间规则。
 
@@ -28,9 +28,11 @@ src/shared/protocol.ts       Agent/世界 JSON 契约
 src/server/runtime.ts        权威世界状态、校验、tick、事件
 src/server/planner.ts        可替换的确定性 Agent planner
 src/server/index.ts          HTTP + WebSocket 网关
-src/client/game/TownScene.ts Phaser 等距视图（程序化像素占位美术）
+src/server/supabase.ts       服务端 Supabase 持久化适配器
+src/client/game/TownScene.ts Phaser 区块平面、独立楼车 Sprite、交互命中区
 src/client/App.tsx           React HUD、Agent 控制台、事件流
-supabase/migrations/         可直接导入 Supabase 的 durable schema
+public/assets/               同风格楼体/车辆 PNG 与 city-assets.json 来源清单
+supabase/migrations/         可直接导入 Supabase 的 durable schema（含 chunk 升级）
 supabase/seed.sql             starter-town 种子数据
 docs/agent-interface.md       Agent 接口说明和示例
 ```
@@ -54,7 +56,7 @@ docs/agent-interface.md       Agent 接口说明和示例
 Node.js 权威 Game Server
   ├─ 内存：tick、坐标、碰撞/AOI、短期事件
   ├─ Agent planner/LLM adapter：只产生有限 AgentAction
-  └─ Supabase Postgres：持久状态、事件、Agent run（下一步接入）
+  └─ Supabase Postgres：世界/实体/Agent 持久状态（MVP 已接入）
 ```
 
 模型只看 `Observation`，只返回 `AgentAction`。服务端再次校验距离、能力、边界和幂等键，再改变状态并产生事件。这是后续接入真实 LLM、多人和用户 Agent 的关键缝隙。
@@ -84,9 +86,13 @@ Node.js 权威 Game Server
 
 ## Supabase 怎么用
 
-可以用。这里把 Supabase 当作 **PostgreSQL + Storage**：`supabase/migrations/001_world_runtime.sql` 已设计世界、实体、Agent、运行时状态、事件、Agent 回合和资源元数据表；`seed.sql` 提供初始数据。
+可以用。这里把 Supabase 当作 **PostgreSQL + Storage**：`001_world_runtime.sql` 建立基础表，`002_chunk_runtime_compat.sql` 增加当前运行时所需的 chunk 字段；`seed.sql` 提供初始数据。
 
-MVP 先用内存运行时，避免把每个 tick 写进数据库。接入 Supabase 时由服务端使用受限的 server-side 数据库连接持久化事件和快照；浏览器不拿 service/secret key，也不直接修改 `game` schema。
+服务端从 `.env` 读取 `SUPABASE_URL` 和 `SUPABASE_SECRET_KEY`，通过 Supabase REST API 在命令完成后保存世界、实体、Agent 运行时和 chunk 元数据；启动时会恢复最近状态。当前不把每个 tick 写进数据库，浏览器也不会拿 secret key。
+
+首次使用前，在 Supabase API 设置中把 `game` 加入 **Exposed schemas**，并执行迁移中的 `service_role` grant；否则 REST 持久化会在 `/api/health` 中显示为 `error`。
+
+填好 `.env` 后运行 `npm run dev`，再用 `curl http://127.0.0.1:3001/api/health` 查看 `persistence.state` 是否为 `ready`。
 
 Realtime 以后可用于聊天、在线状态和低频通知；它不替代权威 tick、AOI、碰撞和房间所有权。Edge Functions 适合短请求/Webhook，不适合常驻世界循环。
 
@@ -99,7 +105,7 @@ Realtime 以后可用于聊天、在线状态和低频通知；它不替代权�
 
 ## 下一阶段顺序
 
-1. 接入 Supabase server-side repository：命令事务、事件 outbox、启动时恢复快照。
+1. 将当前 REST 多表写入替换为数据库 RPC/事务，并增加事件 outbox。
 2. 把确定性 planner 换成 provider-neutral 的 LLM adapter，并记录 prompt/模型版本和预算。
 3. 增加房间/AOI 和第二个 Agent；只有出现跨进程需求时再加 Redis/NATS。
 4. 加游客身份/登录、UGC quarantine → 审核 → public Storage；交易系统最后做。
