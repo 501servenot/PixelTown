@@ -1,0 +1,23 @@
+{
+  "id": "item.wood",
+  "version": 1,
+  "type": "item",
+  "name": "Wood",
+  "description": "从树上掉下来的木材",
+  "attributes": {
+    "stack": 1
+  },
+  "state": {
+    "status": "alive",
+    "activity": "idle",
+    "targetId": null
+  },
+  "interaction": {
+    "enabled": true,
+    "range": 1,
+    "actions": [
+      { "type": "pickup", "targetTypes": ["player", "agent"] }
+    ]
+  },
+  "effects": []
+}

@@ -1,69 +1,34 @@
-# Agent 接口（MVP）
+# Agent 接口
 
-Agent 不直接读写数据库，也不能提交任意脚本。它只拿到服务端裁剪后的 `Observation`，再返回一个有限的 `AgentAction`。
+给外部 Agent 的只有一份文件：**[docs/agent.md](agent.md)**。  
+把那份文档和一把 API Key 交给它，它就能进世界。
 
-本阶段 `agent-1` 在种子数据中直接处于入场状态；登录或游客身份确定后，再把入场做成独立的 session/`enter` 命令。
-
-## 一次回合
+哲学没变：Agent 只 **看** 和交 **结构化意图**。改世界的人是 `WorldSimulation`。Key 绑定一个实体。不要给全图 snapshot。
 
 ```text
-observe → plan（当前是确定性 planner） → validate → execute → event
+读 docs/agent.md + API Key
+        ↓
+POST /v1/agent   {}              进门，拿到 turn
+POST /v1/agent   { think?, do }  每一轮都打这里
+        ↓
+auth 绑 actor → adapter 转格式 → Simulation tick
 ```
 
-服务端在 `validate` 阶段重新检查 Agent、目标实体、距离、能力和边界。客户端或模型传来的坐标不能跳过这些检查。
+本地 key 写在 `.env`：`AGENT_API_KEYS=sk_local_scout:agent_001,sk_local_rover:agent_002,sk_local_player:player_001`。  
+Scout 用 `sk_local_scout`，Rover 用 `sk_local_rover`，本机画面用 `sk_local_player`。接口都是 `/v1/agent`。
 
-## 获取观察
+同一把 Key 会续上同一个会话，Agent 不用管 token、sessionId、内部 Command。
 
-```http
-GET /api/agents/agent-1/observation
-```
+HTTP 是拉取：Agent 不 POST，世界不会去叫它。  
+`/ws/agent` 才是长连接：公共事件（包括 `shout`）单个事件推 `{ type: "heard" }`，同一 tick 的多个事件合并为 `{ type: "heard_batch", items }`，对你说的话推 `{ type: "said" }`。闲聊不广播。调试口 `/ws` 必须先 `hello` 带 `apiKey`，座位以 Key 绑定为准。
 
-```json
-{
-  "observationVersion": 0,
-  "worldId": "starter-town",
-  "worldTime": 480,
-  "agent": { "id": "agent-1", "position": { "x": 5, "y": 5 }, "energy": 100 },
-  "nearbyEntities": [
-    { "id": "quest-board", "kind": "quest", "name": "任务公告板", "position": { "x": 6, "y": 4 }, "capabilities": ["inspect", "greet"] }
-  ],
-  "availableActions": ["move", "inspect", "greet"],
-  "recentEvents": []
-}
-```
+`heard` 带 `startedAtTick` 和 `expiresAtTick`。事件只在有效 tick 内参与感知；事件产生时推送一次，不会每个 tick 重复推送。
+当前默认：呼喊 20 tick（约 1 秒）、实体摧毁 40 tick（约 2 秒）、受伤 1 tick。
+`heard` / `heard_batch` 是异步通知，不会强制开启或打断 Agent 的当前 turn。当前 turn 未回复时，服务端把事件放进每个 Agent 的有界事件箱；下一次 `turn` 会带上摘要，重复的同类事件会带 `count`。事件箱满时丢弃低优先级 heard，私聊优先保留。
 
-`nearbyEntities` 是按距离裁剪的世界视图；完整世界快照只用于调试和画面同步。
+动作可以带 `basedOnTick`（产生决策时的世界 tick）、`expectSelf`（当时的 Agent 版本）和 `expiresAtTick`。服务端只把 `basedOnTick` 作为追踪信息；执行时 `expectSelf` 不匹配会返回 `stale actor version`，`tick >= expiresAtTick` 会返回 `expired`，避免陈旧动作修改世界。
 
-## 执行动作
+本地对话框关掉 = 下线离开，没问题。  
+远程用户：`POST /v1/join` 领身体和 Key，然后挂 `/ws/agent`（或 `npm run agent:live`）才算实时在线；有人 `talk` 会推 `said`，他们回一句再去看或走。断线则访客离开。世界需 `HOST=0.0.0.0` 才能被别的电脑连上。
 
-```http
-POST /api/agents/agent-1/command
-Content-Type: application/json
-```
-
-```json
-{
-  "clientRequestId": "a-request-id",
-  "expectedStateVersion": 0,
-  "action": { "type": "inspect", "entityId": "quest-board" }
-}
-```
-
-当前动作只有四种：
-
-- `move`: `north | south | east | west`
-- `inspect`: 观察附近实体
-- `greet`: 向附近实体打招呼
-- `gather`: 从支持 `gather` 的资源实体采集一份资源
-
-`clientRequestId` 用来做最小幂等保护；`expectedStateVersion` 用来拒绝基于过期观察做出的动作。后续接入队列时应继续保留这两个字段，并在数据库事件表上建立幂等约束。
-
-## 让 Agent 自己运行一步
-
-```http
-POST /api/agents/agent-1/run
-```
-
-MVP 内置的是确定性 planner，目的是先把协议和运行时跑通。后续接入 LLM 时，只替换 planner，不改变 `Observation → AgentAction → validate → execute` 边界。
-
-安全底线：模型输出是不可信输入；模型永远不能直接写位置、库存、实体状态或 SQL。任何新增动作都必须同时增加服务端校验、事件类型和测试。
+`GET /api/sim/snapshot` 不要给模型。

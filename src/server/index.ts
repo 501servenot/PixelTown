@@ -1,8 +1,11 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import { isAgentAction, ServerMessage, WORLD_ID } from "../shared/protocol";
-import { WorldRuntime } from "./runtime";
-import { createSupabaseRepository } from "./supabase";
+import { isObserveDirection } from "../shared/agent";
+import { isClientMessage, ServerMessage, WORLD_ID } from "../shared/protocol";
+import { TICK_MS, WorldSimulation } from "../world";
+import type { WorldBroadcast } from "../world/perception/observe";
+import { CORS, createAgentGateway } from "./agent-gateway";
+import { AgentKeyStore, parseAgentKeys } from "./auth";
 
 if (typeof process.loadEnvFile === "function") {
   try {
@@ -12,66 +15,35 @@ if (typeof process.loadEnvFile === "function") {
   }
 }
 
-const PORT = Number(process.env.PORT ?? 3001);
-const runtime = new WorldRuntime();
-const persistence = createSupabaseRepository();
-
-if (!persistence) {
-  const configuredKey = [process.env.SUPABASE_SECRET_KEY, process.env.SUPABASE_SERVER_KEY, process.env.SUPABASE_SERVICE_ROLE_KEY]
-    .find((value) => value?.trim());
-  console.warn(
-    configuredKey?.trim().startsWith("sb_publishable_")
-      ? "[supabase] disabled: use a server-only sb_secret_... key, not the sb_publishable_... key"
-      : "[supabase] disabled: fill SUPABASE_URL and SUPABASE_SECRET_KEY in .env",
-  );
-}
-
-const persistenceStatus = (): unknown => persistence?.getStatus() ?? { enabled: false, state: "disabled" };
-
-async function hydrateAndBootstrap(): Promise<void> {
-  if (!persistence) return;
-  const loaded = await persistence.load(WORLD_ID);
-  if (loaded?.state) runtime.hydrate(loaded.state);
-  if (loaded && !loaded.found && persistence.shouldBootstrap()) await persistence.persist(runtime.getSnapshot());
-}
-
-async function persistAfterCommand(): Promise<void> {
-  if (persistence) await persistence.persist(runtime.getSnapshot());
-}
+const PORT = Number(process.env.PORT ?? 3001); // Agent gateway: /v1/agent, /ws/agent (scout + rover)
+const HOST = process.env.HOST ?? "127.0.0.1";
+const simulation = new WorldSimulation();
+simulation.seedStarterChunk();
+const keys = new AgentKeyStore(parseAgentKeys(process.env.AGENT_API_KEYS));
+const gateway = createAgentGateway(simulation, keys);
+const seats = new Map<WebSocket, string>();
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
-    "access-control-allow-origin": "*",
     "cache-control": "no-store",
+    ...CORS,
   });
   response.end(JSON.stringify(body));
 }
 
-function errorStatus(error: unknown, fallback: number): number {
-  return error instanceof Error && error.message.startsWith("[supabase]") ? 503 : fallback;
-}
-
-async function readJson(request: IncomingMessage): Promise<Record<string, unknown>> {
-  let raw = "";
-  for await (const chunk of request) {
-    raw += chunk.toString();
-    if (raw.length > 1_000_000) throw new Error("Request body is too large");
-  }
-  if (!raw) return {};
-  const value: unknown = JSON.parse(raw);
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("JSON body must be an object");
-  return value as Record<string, unknown>;
+function readObservation(actorId: string, radius?: number, direction?: string) {
+  return simulation.observe(actorId, {
+    radius,
+    direction: isObserveDirection(direction) ? direction : undefined,
+    consumeSaid: false,
+  });
 }
 
 async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
   if (request.method === "OPTIONS") {
-    response.writeHead(204, {
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "content-type",
-    });
+    response.writeHead(204, CORS);
     response.end();
     return;
   }
@@ -81,58 +53,18 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
       ok: true,
       service: "pixeltown-server",
       worldId: WORLD_ID,
-      persistence: persistenceStatus(),
+      tickMs: TICK_MS,
+      tickHz: Math.round(1000 / TICK_MS),
+      agentAuth: keys.size > 0,
     });
     return;
   }
-  if (request.method === "GET" && url.pathname === "/api/world/snapshot") {
-    sendJson(response, 200, runtime.getSnapshot());
+  if (request.method === "GET" && url.pathname === "/api/sim/snapshot") {
+    sendJson(response, 200, simulation.getSnapshot());
     return;
   }
 
-  const observationMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/observation$/);
-  if (request.method === "GET" && observationMatch) {
-    try {
-      sendJson(response, 200, runtime.observe(decodeURIComponent(observationMatch[1])));
-    } catch (error) {
-      sendJson(response, 404, { error: error instanceof Error ? error.message : "Agent not found" });
-    }
-    return;
-  }
-
-  const commandMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/command$/);
-  if (request.method === "POST" && commandMatch) {
-    try {
-      const body = await readJson(request);
-      if (!isAgentAction(body.action)) {
-        sendJson(response, 400, { error: "action is not a valid AgentAction" });
-        return;
-      }
-      const result = runtime.executeCommand(
-        decodeURIComponent(commandMatch[1]),
-        body.action,
-        String(body.clientRequestId ?? ""),
-        typeof body.expectedStateVersion === "number" ? body.expectedStateVersion : undefined,
-      );
-      if (result.ok) await persistAfterCommand();
-      sendJson(response, 200, result);
-    } catch (error) {
-      sendJson(response, errorStatus(error, 400), { error: error instanceof Error ? error.message : "Invalid request" });
-    }
-    return;
-  }
-
-  const runMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/run$/);
-  if (request.method === "POST" && runMatch) {
-    try {
-      const result = runtime.runAgentTurn(decodeURIComponent(runMatch[1]));
-      if (result.result.ok) await persistAfterCommand();
-      sendJson(response, 200, result);
-    } catch (error) {
-      sendJson(response, errorStatus(error, 404), { error: error instanceof Error ? error.message : "Agent not found" });
-    }
-    return;
-  }
+  if (await gateway.handleHttp(request, response, url)) return;
 
   sendJson(response, 404, { error: "Not found" });
 }
@@ -143,30 +75,145 @@ const server = createServer((request, response) => {
   });
 });
 
-const wss = new WebSocketServer({ server, path: "/ws" });
-wss.on("connection", (socket: WebSocket) => {
-  socket.send(JSON.stringify({ type: "snapshot", payload: runtime.getSnapshot() } satisfies ServerMessage));
+function sendSocket(socket: WebSocket, message: ServerMessage): void {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+
+const wss = new WebSocketServer({ noServer: true });
+const agentWss = new WebSocketServer({ noServer: true });
+gateway.attach(agentWss);
+
+server.on("upgrade", (request, socket, head) => {
+  const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+  if (pathname === "/ws/agent") {
+    agentWss.handleUpgrade(request, socket, head, (ws) => agentWss.emit("connection", ws, request));
+    return;
+  }
+  if (pathname === "/ws") {
+    wss.handleUpgrade(request, socket, head, (ws) => wss.emit("connection", ws, request));
+    return;
+  }
+  socket.destroy();
 });
 
-runtime.subscribe((snapshot) => {
-  const message = JSON.stringify({ type: "snapshot", payload: snapshot } satisfies ServerMessage);
-  for (const socket of wss.clients) {
-    if (socket.readyState === WebSocket.OPEN) socket.send(message);
+wss.on("connection", (socket: WebSocket) => {
+  socket.on("close", () => seats.delete(socket));
+  socket.on("message", (raw) => {
+    try {
+      const parsed: unknown = JSON.parse(raw.toString());
+      if (!isClientMessage(parsed)) {
+        sendSocket(socket, { type: "command_result", payload: { ok: false, error: "unrecognized socket message" } });
+        return;
+      }
+
+      if (parsed.type === "hello") {
+        const credential = keys.lookup(parsed.apiKey);
+        if (!credential) {
+          sendSocket(socket, {
+            type: "command_result",
+            requestId: parsed.requestId,
+            payload: { ok: false, error: "missing or invalid apiKey" },
+          });
+          return;
+        }
+        if (!simulation.canActorAct(credential.actorId)) {
+          sendSocket(socket, {
+            type: "command_result",
+            requestId: parsed.requestId,
+            payload: { ok: false, error: `${credential.actorId} is not an active player or agent` },
+          });
+          return;
+        }
+        seats.set(socket, credential.actorId);
+        sendSocket(socket, {
+          type: "observation",
+          requestId: parsed.requestId,
+          payload: readObservation(credential.actorId),
+        });
+        return;
+      }
+
+      const actorId = seats.get(socket);
+      if (!actorId) {
+        sendSocket(socket, {
+          type: "command_result",
+          requestId: parsed.requestId,
+          payload: { ok: false, error: "hello with apiKey first" },
+        });
+        return;
+      }
+
+      if (parsed.type === "observe") {
+        sendSocket(socket, {
+          type: "observation",
+          requestId: parsed.requestId,
+          payload: readObservation(actorId, parsed.radius, parsed.direction),
+        });
+        return;
+      }
+
+      if (!simulation.canActorAct(actorId)) {
+        sendSocket(socket, {
+          type: "command_result",
+          requestId: parsed.requestId,
+          payload: { ok: false, error: `${actorId} is not an active player or agent` },
+        });
+        return;
+      }
+
+      const commandId = simulation.submitCommand({
+        actorId,
+        type: parsed.commandType,
+        targetId: parsed.targetId,
+        expectedVersion: parsed.expectedVersion,
+        payload: parsed.payload,
+      });
+      sendSocket(socket, {
+        type: "command_result",
+        requestId: parsed.requestId,
+        payload: { ok: true, commandId },
+      });
+    } catch (error) {
+      sendSocket(socket, {
+        type: "command_result",
+        payload: { ok: false, error: error instanceof Error ? error.message : "Invalid message" },
+      });
+    }
+  });
+});
+
+function hearersOf(broadcast: WorldBroadcast): Set<string> {
+  return new Set(simulation.getNearbyObservers(broadcast.origin, broadcast.radius).map((entity) => entity.id));
+}
+
+simulation.subscribeBroadcast((broadcasts) => {
+  for (const broadcast of broadcasts) {
+    const hearers = hearersOf(broadcast);
+    for (const socket of wss.clients) {
+      const actorId = seats.get(socket);
+      if (actorId && hearers.has(actorId) && socket.readyState === WebSocket.OPEN) {
+        sendSocket(socket, { type: "broadcast", payload: broadcast });
+      }
+    }
   }
 });
 
 async function main(): Promise<void> {
-  await hydrateAndBootstrap();
-  runtime.start();
-  server.listen(PORT, "127.0.0.1", () => {
-    console.log(`PixelTown server listening on http://127.0.0.1:${PORT}`);
+  simulation.start();
+  server.listen(PORT, HOST, () => {
+    console.log(`PixelTown server listening on http://${HOST}:${PORT} (${Math.round(1000 / TICK_MS)} Hz)`);
+    if (keys.size === 0) {
+      console.warn("AGENT_API_KEYS is empty; /v1/agent and /ws/agent will reject requests");
+    } else {
+      console.log(`Agent gateway ready (${keys.size} key${keys.size === 1 ? "" : "s"})`);
+    }
   });
 }
 
 async function shutdown(): Promise<void> {
-  runtime.stop();
-  if (persistence) await persistence.persist(runtime.getSnapshot());
+  simulation.stop();
   wss.close();
+  agentWss.close();
   server.close(() => process.exit(0));
 }
 

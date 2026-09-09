@@ -1,0 +1,40 @@
+{
+  "id": "npc.john",
+  "version": 1,
+  "type": "npc",
+  "name": "John",
+  "description": "一个生活在 Pixel City 的普通居民",
+  "position": {
+    "x": 120,
+    "y": 85,
+    "chunkId": "chunk_1_1"
+  },
+  "attributes": {
+    "health": 100,
+    "maxHealth": 100,
+    "energy": 80,
+    "speed": 3,
+    "age": 25
+  },
+  "state": {
+    "status": "alive",
+    "activity": "idle",
+    "targetId": null
+  },
+  "behavior": {
+    "tickRate": 2,
+    "actions": [
+      { "type": "wander", "enabled": true },
+      { "type": "rest", "enabled": true }
+    ]
+  },
+  "interaction": {
+    "enabled": true,
+    "range": 3,
+    "actions": [
+      { "type": "talk", "targetTypes": ["player", "npc", "agent"] },
+      { "type": "attack", "targetTypes": ["npc", "animal"] }
+    ]
+  },
+  "effects": []
+}

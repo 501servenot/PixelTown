@@ -1,128 +1,86 @@
+import { isAgentCommandType, isObserveDirection, type AgentCommandType, type AgentObservation, type WorldBroadcast } from "./agent";
+
 export const WORLD_ID = "starter-town";
-export const AGENT_ID = "agent-1";
 
-export type TimeSegment = "dawn" | "noon" | "dusk" | "night";
+/** One logical cell is one drawn diamond. Client and server never use different units. */
+export const TILE_WIDTH = 128;
+export const TILE_HEIGHT = 64;
 
-export function timeSegmentForMinutes(totalMinutes: number): TimeSegment {
-  const minutes = ((Math.floor(totalMinutes) % (24 * 60)) + 24 * 60) % (24 * 60);
-  if (minutes >= 5 * 60 && minutes < 11 * 60) return "dawn";
-  if (minutes >= 11 * 60 && minutes < 17 * 60) return "noon";
-  if (minutes >= 17 * 60 && minutes < 20 * 60) return "dusk";
-  return "night";
+export type { AgentCommandType as SimCommandType, AgentObservation, ObserveDirection, WorldBroadcast } from "./agent";
+export { AGENT_COMMAND_TYPES as SIM_COMMAND_TYPES, isAgentCommandType as isSimCommandType } from "./agent";
+
+/** Player / Agent → server. Live actions go over the debug socket, not HTTP. */
+export type ClientMessage =
+  | {
+      type: "hello";
+      requestId?: string;
+      apiKey: string;
+      actorId?: string;
+    }
+  | {
+      type: "observe";
+      requestId?: string;
+      actorId?: string;
+      radius?: number;
+      direction?: import("./agent").ObserveDirection;
+    }
+  | {
+      type: "command";
+      requestId?: string;
+      actorId?: string;
+      commandType: AgentCommandType;
+      targetId?: string;
+      expectedVersion?: number;
+      payload?: Record<string, number | string | boolean>;
+    };
+
+/** Wire form of WorldSimulation.getSnapshot(). Extra fields on the wire are ignored. */
+export interface SimSnapshot {
+  tick: number;
+  entityCount: number;
+  chunkCount: number;
+  entities: Array<{
+    id: string;
+    definitionId: string;
+    version: number;
+    type: string;
+    name: string;
+    description: string;
+    position: { x: number; y: number; chunkId: string };
+    attributes: Record<string, number | string | boolean>;
+    state: { status: string; activity: string; targetId: string | null; facing?: string };
+  }>;
+  recentEvents: Array<{
+    id: string;
+    type: string;
+    sourceId?: string;
+    targetId?: string;
+    depth: number;
+    payload?: Record<string, number | string | boolean | null>;
+  }>;
+  rejected: Array<{ commandId: string; reason: string }>;
 }
 
-export type Direction = "north" | "south" | "east" | "west";
-export type EntityKind = "landmark" | "resource" | "quest";
-export type AgentStatus = "idle" | "thinking" | "moving";
-export type ActionType = "move" | "inspect" | "greet" | "gather";
+export type ServerMessage = {
+  requestId?: string;
+} & (
+  | { type: "sim_snapshot"; payload: SimSnapshot }
+  | { type: "observation"; payload: AgentObservation }
+  | { type: "broadcast"; payload: WorldBroadcast }
+  | { type: "command_result"; payload: { ok: boolean; commandId?: string; error?: string } }
+);
 
-export interface Position {
-  x: number;
-  y: number;
-}
-
-export interface WorldEntity {
-  id: string;
-  kind: EntityKind;
-  name: string;
-  position: Position;
-  description: string;
-  capabilities: string[];
-  state: Record<string, unknown>;
-}
-
-export interface AgentState {
-  id: string;
-  name: string;
-  position: Position;
-  status: AgentStatus;
-  energy: number;
-  inventory: Record<string, number>;
-  stateVersion: number;
-}
-
-export interface WorldEvent {
-  id: string;
-  type: string;
-  message: string;
-  worldTime: number;
-  stateVersion: number;
-  agentId?: string;
-  entityId?: string;
-}
-
-export interface WorldSnapshot {
-  worldId: string;
-  name: string;
-  width: number;
-  height: number;
-  worldTime: number;
-  stateVersion: number;
-  entities: WorldEntity[];
-  agents: AgentState[];
-  recentEvents: WorldEvent[];
-}
-
-export interface Observation {
-  observationVersion: number;
-  observedAt: number;
-  worldId: string;
-  worldTime: number;
-  agent: AgentState;
-  nearbyEntities: WorldEntity[];
-  availableActions: ActionType[];
-  recentEvents: WorldEvent[];
-}
-
-export type AgentAction =
-  | { type: "move"; direction: Direction }
-  | { type: "inspect"; entityId: string }
-  | { type: "greet"; entityId: string }
-  | { type: "gather"; entityId: string };
-
-export interface CommandRequest {
-  action: AgentAction;
-  clientRequestId?: string;
-  expectedStateVersion?: number;
-}
-
-export interface CommandResult {
-  ok: boolean;
-  stateVersion: number;
-  message: string;
-  action?: AgentAction;
-  event?: WorldEvent;
-  observation?: Observation;
-  error?: string;
-}
-
-export interface AgentDecision {
-  agentId: string;
-  observationVersion: number;
-  action: AgentAction;
-  rationale: string;
-}
-
-export interface AgentTurnResult {
-  observation: Observation;
-  decision: AgentDecision;
-  result: CommandResult;
-}
-
-export interface ServerMessage {
-  type: "snapshot" | "event";
-  payload: WorldSnapshot | WorldEvent;
-}
-
-export function isAgentAction(value: unknown): value is AgentAction {
+export function isClientMessage(value: unknown): value is ClientMessage {
   if (!value || typeof value !== "object") return false;
-  const action = value as Record<string, unknown>;
-  if (action.type === "move") {
-    return ["north", "south", "east", "west"].includes(String(action.direction));
+  const message = value as Record<string, unknown>;
+  if (message.type === "hello") {
+    return typeof message.apiKey === "string" && message.apiKey.length > 0;
   }
-  return ["inspect", "greet", "gather"].includes(String(action.type)) && typeof action.entityId === "string";
-}
-
-export function manhattanDistance(a: Position, b: Position): number {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  if (message.type === "observe") {
+    return message.direction === undefined || isObserveDirection(message.direction);
+  }
+  if (message.type === "command") {
+    return isAgentCommandType(message.commandType);
+  }
+  return false;
 }

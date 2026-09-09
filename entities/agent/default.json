@@ -1,0 +1,33 @@
+{
+  "id": "agent.default",
+  "version": 1,
+  "type": "agent",
+  "name": "Agent",
+  "description": "通过观察、Command 和公共事件参与世界的 Agent",
+  "attributes": {
+    "health": 100,
+    "maxHealth": 100,
+    "energy": 100,
+    "speed": 3
+  },
+  "state": {
+    "status": "alive",
+    "activity": "idle",
+    "targetId": null,
+    "facing": "east"
+  },
+  "behavior": {
+    "tickRate": 2,
+    "actions": []
+  },
+  "interaction": {
+    "enabled": true,
+    "range": 3,
+    "actions": [
+      { "type": "talk", "targetTypes": ["player", "npc", "agent"] },
+      { "type": "attack", "targetTypes": ["npc", "animal", "object", "resource"] },
+      { "type": "pickup", "targetTypes": ["item"] }
+    ]
+  },
+  "effects": []
+}
