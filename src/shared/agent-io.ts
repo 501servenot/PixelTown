@@ -1,6 +1,6 @@
 import type { ObserveDirection } from "./agent";
 
-/** What an external Agent sends. The gateway translates this into world commands. */
+/** 外部 Agent 提交的意图（intent）JSON 形状；agent-gateway 收到后由 agent-adapter 翻译成 Command 交给世界执行。 */
 export type AgentIntent = {
   basedOnTick?: number;
   expiresAtTick?: number;
@@ -13,6 +13,7 @@ export type AgentIntent = {
   | { do: "use"; target: string; verb: string; text?: string; expect?: number; damage?: number }
 );
 
+/** 感知包里"你自己"的精简视图：位置、朝向、状态、血量体力与版本号。 */
 export interface AgentSelfView {
   id: string;
   name: string;
@@ -28,6 +29,7 @@ export interface AgentSelfView {
   version: number;
 }
 
+/** 视野内某个实体的精简视图：名称描述、距离、版本，以及你可以对它做的动作（youCan）。 */
 export interface AgentSeeView {
   id: string;
   name: string;
@@ -42,6 +44,7 @@ export interface AgentSeeView {
   youCan: Array<{ verb: string; inRange: boolean; range: number; note: string }>;
 }
 
+/** heard 通道里的一条范围事件：公共广播或附近 Agent 旁听到的 talk。 */
 export interface AgentHeardView {
   id: string;
   tick: number;
@@ -50,16 +53,20 @@ export interface AgentHeardView {
   priority: number;
   startedAtTick: number;
   expiresAtTick: number;
+  from?: string;
+  name?: string;
   about?: string;
   count?: number;
 }
 
+/** 多条 heard 合并成一批推送的形状；WS 通道一次下发多个公共事件时使用。 */
 export interface AgentHeardBatch {
   type: "heard_batch";
   tick: number;
   items: AgentHeardView[];
 }
 
+/** said 通道里的一条定向消息：谁说的、内容与发生的 tick；只投递给指定接收者。 */
 export interface AgentSaidView {
   id: string;
   from: string;
@@ -68,7 +75,7 @@ export interface AgentSaidView {
   tick: number;
 }
 
-/** What an external Agent receives. Keep this small enough for an LLM context. */
+/** 世界回给 Agent 的完整感知包：you/see/heard/said 加可做的动作；刻意保持精简以适配 LLM 上下文。 */
 export interface AgentPerception {
   ok: true;
   tick: number;
@@ -79,6 +86,7 @@ export interface AgentPerception {
   canDo: Array<"look" | "face" | "move" | "shout" | "use">;
 }
 
+/** intent 的执行回执：是否被接受、命令 ID、拒绝原因，以及执行后的最新感知。 */
 export interface AgentIntentResult {
   ok: boolean;
   accepted?: boolean;
@@ -88,13 +96,14 @@ export interface AgentIntentResult {
   perception?: AgentPerception;
 }
 
+/** 上一回合 intent 的结果摘要，随下一回合一起发给 Agent，让它知道刚才的动作成没成。 */
 export interface AgentTurnLast {
   accepted: boolean;
   commandId?: string;
   rejected?: string;
 }
 
-/** One think-act cycle from the world. The Agent replies with parseable JSON only. */
+/** 世界发给 Agent 的一个思考-行动回合：感知加会话元信息；Agent 只能用可解析的 JSON intent 回应。 */
 export interface AgentTurn extends AgentPerception {
   type: "turn";
   turn: number;
@@ -105,6 +114,7 @@ export interface AgentTurn extends AgentPerception {
   priority?: "said" | "heard" | "idle";
 }
 
+/** 会话建立时的首条消息：会话 ID、actorId、回话 JSON schema，并附第一个回合。 */
 export interface AgentSessionHello {
   type: "session";
   sessionId: string;

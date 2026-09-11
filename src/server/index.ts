@@ -4,6 +4,7 @@ import { isObserveDirection } from "../shared/agent";
 import { isClientMessage, ServerMessage, WORLD_ID } from "../shared/protocol";
 import { TICK_MS, WorldSimulation } from "../world";
 import type { WorldBroadcast } from "../world/perception/observe";
+import type { SpeechLine } from "../world/perception/speech";
 import { CORS, createAgentGateway } from "./agent-gateway";
 import { AgentKeyStore, parseAgentKeys } from "./auth";
 
@@ -18,7 +19,7 @@ if (typeof process.loadEnvFile === "function") {
 const PORT = Number(process.env.PORT ?? 3001); // Agent gateway: /v1/agent, /ws/agent (scout + rover)
 const HOST = process.env.HOST ?? "127.0.0.1";
 const simulation = new WorldSimulation();
-simulation.seedStarterChunk();
+simulation.seedPlayableWorld();
 const keys = new AgentKeyStore(parseAgentKeys(process.env.AGENT_API_KEYS));
 const gateway = createAgentGateway(simulation, keys);
 const seats = new Map<WebSocket, string>();
@@ -130,6 +131,13 @@ wss.on("connection", (socket: WebSocket) => {
           requestId: parsed.requestId,
           payload: readObservation(credential.actorId),
         });
+        // Bootstrap the renderer with the authoritative world state. Further
+        // snapshots are pushed by the simulation subscription below.
+        sendSocket(socket, {
+          type: "sim_snapshot",
+          requestId: parsed.requestId,
+          payload: simulation.getSnapshot(),
+        });
         return;
       }
 
@@ -182,6 +190,14 @@ wss.on("connection", (socket: WebSocket) => {
   });
 });
 
+// WorldSimulation emits only when a tick changes meaningful state (commands,
+// events, or rejections), so idle ticks do not generate socket traffic.
+simulation.subscribe((snapshot) => {
+  for (const socket of wss.clients) {
+    if (seats.has(socket)) sendSocket(socket, { type: "sim_snapshot", payload: snapshot });
+  }
+});
+
 function hearersOf(broadcast: WorldBroadcast): Set<string> {
   return new Set(simulation.getNearbyObservers(broadcast.origin, broadcast.radius).map((entity) => entity.id));
 }
@@ -194,6 +210,17 @@ simulation.subscribeBroadcast((broadcasts) => {
       if (actorId && hearers.has(actorId) && socket.readyState === WebSocket.OPEN) {
         sendSocket(socket, { type: "broadcast", payload: broadcast });
       }
+    }
+  }
+});
+
+simulation.subscribeSpeech((line: SpeechLine) => {
+  const source = simulation.getEntity(line.fromId);
+  const target = simulation.getEntity(line.toId);
+  if (!source || !target || !["player", "agent"].includes(source.type) || target.type !== "agent") return;
+  for (const socket of wss.clients) {
+    if (seats.has(socket) && socket.readyState === WebSocket.OPEN) {
+      sendSocket(socket, { type: "speech", payload: line });
     }
   }
 });

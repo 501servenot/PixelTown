@@ -1,0 +1,66 @@
+{
+  "id": "npc.guard_bot",
+  "version": 2,
+  "type": "npc",
+  "name": "保安机器人",
+  "description": "在街区巡逻的自动保安。被打会警戒，然后朝打它的人靠近。",
+  "material": "metal",
+  "render": { "assetKey": "guard_bot", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 1, "height": 1, "solid": true },
+  "attributes": {
+    "health": 300,
+    "maxHealth": 300,
+    "energy": 100,
+    "speed": 4,
+    "footprintWidth": 1,
+    "footprintHeight": 1,
+    "collision": true,
+    "movable": false,
+    "mass": 120,
+    "capacity": 2,
+    "vision": 12,
+    "faction": "city_security",
+    "wanderRadius": 6,
+    "wanderSteps": 4,
+    "wanderPause": 80
+  },
+  "tags": ["robot", "authority"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null, "facing": "west" },
+  "behavior": {
+    "tickRate": 10,
+    "actions": [
+      { "type": "chase", "enabled": true, "condition": { "hasStatus": "alert" } },
+      { "type": "wander", "enabled": true },
+      { "type": "rest", "enabled": true, "condition": { "energy<": 15 } }
+    ]
+  },
+  "interaction": {
+    "enabled": true,
+    "range": 2,
+    "actions": [
+      { "type": "talk", "targetTypes": ["player", "agent", "npc"] },
+      { "type": "attack", "targetTypes": ["player", "agent"] }
+    ]
+  },
+  "effects": [
+    {
+      "trigger": "damaged",
+      "do": [
+        { "op": "emit", "signal": "sound", "text": "咣——金属撞击的巨响", "radius": 8 },
+        { "op": "status", "name": "alert", "target": "self", "duration": 400 }
+      ]
+    },
+    {
+      "trigger": "tick:100",
+      "condition": { "health<": 90 },
+      "do": [{ "op": "emit", "signal": "alarm", "text": "保安机器人发出求援警报", "radius": 24 }]
+    },
+    {
+      "trigger": "destroyed",
+      "do": [
+        { "op": "emit", "signal": "alarm", "text": "保安机器人发出求援警报", "radius": 24 },
+        { "op": "spawn", "entityType": "item.scrap_metal", "count": 2 }
+      ]
+    }
+  ]
+}

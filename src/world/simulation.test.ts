@@ -20,7 +20,7 @@ function relayNpc(id: string): EntityDefinition {
     attributes: { health: 50, maxHealth: 50, energy: 10, speed: 1 },
     state: { status: "alive", activity: "idle", targetId: null },
     interaction: { enabled: true, range: 1, actions: [] },
-    effects: [{ trigger: "alerted", type: "alert", radius: 3 }],
+    effects: [],
   };
 }
 
@@ -33,11 +33,57 @@ describe("entity catalog", () => {
     assert.ok(catalog.get("npc.john"));
     assert.ok(catalog.get("animal.cat"));
     assert.ok(catalog.get("object.tree"));
+    assert.ok(catalog.get("npc.guard_bot"));
+    assert.ok(catalog.get("object.gacha"));
+    assert.ok(catalog.get("object.road"));
+    assert.ok(catalog.get("object.portal"));
     assert.equal(catalog.get("npc.john")?.type, "npc");
   });
 });
 
 describe("world simulation v0.1", () => {
+  it("seeds the playable world with two agents, one tree and one mall", () => {
+    const world = new WorldSimulation();
+    world.seedPlayableWorld();
+    assert.deepEqual(
+      world.getSnapshot().entities.map((entity) => entity.id),
+      ["player_001", "agent_001", "agent_002", "agent_003", "tree_001", "mall_001", "guard_001", "gacha_001", "token_001", "road_001", "portal_a", "portal_b"],
+    );
+    assert.equal(world.getEntity("mall_001")?.attributes.category, "mall");
+    assert.equal(world.getEntity("mall_001")?.attributes.footprintWidth, 25);
+    assert.equal(world.getEntity("mall_001")?.attributes.canRest, true);
+    assert.deepEqual(world.getEntity("tree_001")?.components.collider, { width: 3, height: 3, solid: true });
+    assert.equal(world.getEntity("mall_001")?.components.render.assetKey, "mall");
+    assert.equal(world.getEntity("road_001")?.components.render.layer, "ground");
+    assert.equal(world.getEntity("agent_001")?.name, "Scout");
+    assert.equal(world.getEntity("agent_002")?.name, "Rover");
+    assert.equal(world.getEntity("agent_003")?.name, "Wren");
+  });
+
+  it("lets an agent rest at the mall", () => {
+    const world = new WorldSimulation();
+    world.seedPlayableWorld();
+    world.submitCommand({ actorId: "agent_001", type: "move", payload: { x: 160, y: 60 } });
+    world.tick();
+    world.submitCommand({ actorId: "agent_001", type: "interact", targetId: "mall_001", payload: { verb: "rest" } });
+    world.tick();
+    assert.equal(world.getEntity("agent_001")?.state.activity, "resting");
+  });
+
+  it("blocks movement into a solid tree footprint but allows the mall interior", () => {
+    const blocked = starter();
+    blocked.submitCommand({ actorId: "player_001", type: "move", payload: { x: 121, y: 85 } });
+    const blockedSnapshot = blocked.tick();
+    assert.equal(blocked.getEntity("player_001")?.position.x, 119);
+    assert.ok(blockedSnapshot.rejected.some((item) => item.reason.includes("Oak Tree")));
+
+    const playable = new WorldSimulation();
+    playable.seedPlayableWorld();
+    playable.submitCommand({ actorId: "agent_001", type: "move", payload: { x: 160, y: 60 } });
+    playable.tick();
+    assert.deepEqual(playable.getEntity("agent_001")?.position, { x: 160, y: 60, chunkId: "chunk_2_0" });
+  });
+
   it("rejects stale actor versions and expired commands", () => {
     const world = starter();
     world.submitCommand({ actorId: "player_001", type: "move", payload: { dx: 1, dy: 0 }, expectedActorVersion: 1 });
@@ -139,7 +185,7 @@ describe("world simulation v0.1", () => {
     });
     const snapshot = world.tick();
     const npc = world.getEntity("npc_001");
-    assert.equal(npc?.state.activity, "alert");
+    assert.ok(npc?.statuses.some((item) => item.name === "alert"));
     assert.ok(snapshot.recentEvents.some((event) => event.type === "entity_state_changed" && event.targetId === "npc_001"));
   });
 
@@ -234,11 +280,10 @@ describe("world simulation v0.1", () => {
     const snapshot = world.tick();
     const depths = snapshot.recentEvents.map((event) => event.depth);
     assert.ok(Math.max(...depths) <= MAX_EVENT_DEPTH);
-    assert.equal(world.getEntity("npc_a")?.state.activity, "alert");
-    assert.equal(world.getEntity("npc_b")?.state.activity, "alert");
-    assert.equal(world.getEntity("npc_c")?.state.activity, "alert");
-    assert.equal(world.getEntity("npc_d")?.state.activity, "alert");
-    assert.ok(snapshot.recentEvents.some((event) => event.type === "entity_state_changed" && event.depth >= 3));
+    assert.ok(world.getEntity("npc_a")?.statuses.some((item) => item.name === "alert"));
+    assert.ok(world.getEntity("npc_b")?.statuses.some((item) => item.name === "alert"));
+    assert.equal(world.getEntity("npc_c")?.statuses.some((item) => item.name === "alert"), false);
+    assert.equal(world.getEntity("npc_d")?.statuses.some((item) => item.name === "alert"), false);
   });
 
   it("talks to John and uses spatial query for nearby entities", () => {

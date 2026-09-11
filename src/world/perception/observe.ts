@@ -29,8 +29,11 @@ const VERB_HINTS: Record<string, string> = {
   chop: "砍伐",
   pickup: "拾取",
   destroy: "摧毁",
+  collect: "扭蛋",
+  pet: "抚摸",
 };
 
+/** 目标实体向观察者提供的一个可交互动作：动词、距离与是否在范围内；目标方声明的 interaction 列表是权威。 */
 export interface OfferedInteraction {
   type: string;
   range: number;
@@ -38,6 +41,7 @@ export interface OfferedInteraction {
   description: string;
 }
 
+/** 观察者视野内单个实体的视图：名称描述等配方文案、属性、状态与可发起的交互列表。 */
 export interface ObservedEntity {
   id: string;
   version: number;
@@ -51,6 +55,7 @@ export interface ObservedEntity {
   interactions: OfferedInteraction[];
 }
 
+/** 一次拉取式 observe 的完整结果：观察者自己、视野内实体、heard 广播与 said 私聊；agent/玩家问了才生成。 */
 export interface AgentObservation {
   tick: number;
   observerId: string;

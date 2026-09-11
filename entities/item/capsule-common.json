@@ -1,0 +1,20 @@
+{
+  "id": "item.capsule_common",
+  "version": 2,
+  "type": "item",
+  "name": "普通扭蛋",
+  "description": "一颗普通的扭蛋，里面大概是小玩具。",
+  "material": "glass",
+  "render": { "assetKey": "fallback", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 1, "height": 1, "solid": false },
+  "attributes": { "stack": 1, "movable": true, "collision": false },
+  "tags": ["item", "prize"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null },
+  "behavior": { "tickRate": 0, "actions": [] },
+  "interaction": {
+    "enabled": true,
+    "range": 1,
+    "actions": [{ "type": "pickup", "targetTypes": ["player", "agent"] }]
+  },
+  "effects": []
+}

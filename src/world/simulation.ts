@@ -25,7 +25,7 @@ import {
   PublicEventManager,
 } from "./perception/public-event";
 import { SpeechInbox, type SpeechLine } from "./perception/speech";
-import { EventQueue, MAX_EVENT_DEPTH, MAX_EVENTS_PER_TICK, type WorldSimEvent } from "./domain/event";
+import { EVENT_PRIORITY, EventQueue, MAX_EVENT_DEPTH, MAX_EVENTS_PER_TICK, type WorldSimEvent } from "./domain/event";
 import {
   applyDamage as applyDamageTo,
   applyEffects as applyEffectsTo,
@@ -37,6 +37,7 @@ import {
   executeShout,
   executePickup,
   executeTalk,
+  fireTickEffects,
   observeActor,
   positionFromPayload,
   planBehavior,
@@ -44,9 +45,11 @@ import {
   removeEntity as detachEntity,
   spawnEntity,
   addEntity as placeEntity,
+  tickStatuses,
 } from "./systems";
 import type { SimStore, SpeechPort } from "./systems/host";
 
+/** 一个 tick 结束后的世界快照：全部实体、本 tick 的事件与广播、被拒命令；供服务端推送与客户端渲染。 */
 export interface SimulationSnapshot {
   tick: number;
   entityCount: number;
@@ -57,6 +60,7 @@ export interface SimulationSnapshot {
   rejected: CommandReject[];
 }
 
+/** WorldSimulation 的构造参数：可注入配方目录，以及防事件链式爆炸的上限（maxEventDepth/maxEventsPerTick）。 */
 export interface WorldSimulationOptions {
   catalog?: EntityCatalog;
   maxEventDepth?: number;
@@ -72,9 +76,12 @@ const COMPATIBLE_ACTIONS: Record<string, string[]> = {
   talk: ["talk"],
   pickup: ["pickup"],
   move: ["move"],
-  interact: ["talk", "attack", "chop", "pickup", "destroy"],
+  rest: ["rest"],
+  interact: ["talk", "attack", "chop", "pickup", "destroy", "collect"],
+  collect: ["collect"],
 };
 
+/** 服务端权威的世界模拟器：20Hz 逐 tick 驱动，是唯一改世界的人；实现 SimStore/SpeechPort，把校验后的 Command 分发给各系统执行。 */
 export class WorldSimulation implements SimStore, SpeechPort {
   private readonly chunks = new Map<string, Chunk>();
   private readonly entities = new Map<string, RuntimeEntity>();
@@ -122,9 +129,36 @@ export class WorldSimulation implements SimStore, SpeechPort {
     const rover = this.spawn("agent.default", "agent_002", placedPosition(117, 85));
     rover.name = "Rover";
     rover.description = "第二个进入世界的 Agent，通过观察和 Command 参与模拟";
+    const wren = this.spawn("agent.default", "agent_003", placedPosition(116, 85));
+    wren.name = "Wren";
+    wren.description = "第三个进入世界的 Agent，和 Scout、Rover 站在相邻格子上";
     this.spawn("npc.john", "npc_001", placedPosition(120, 85));
     this.spawn("object.tree", "tree_001", placedPosition(121, 85));
     this.spawn("animal.cat", "cat_001", placedPosition(122, 86));
+  }
+
+  /** Runtime starter layout used by the renderer: two test agents, one tree and one mall. */
+  seedPlayableWorld(): void {
+    this.spawn("player.default", "player_001", placedPosition(115, 87));
+    const scout = this.spawn("agent.default", "agent_001", placedPosition(118, 85));
+    scout.name = "Scout";
+    scout.description = "第一个进入世界的测试 Agent";
+    const rover = this.spawn("agent.default", "agent_002", placedPosition(117, 85));
+    rover.name = "Rover";
+    rover.description = "第二个进入世界的测试 Agent";
+    const wren = this.spawn("agent.default", "agent_003", placedPosition(116, 85));
+    wren.name = "Wren";
+    wren.description = "第三个进入世界的测试 Agent";
+    this.spawn("object.tree", "tree_001", placedPosition(121, 85));
+    this.spawn("building.mall", "mall_001", placedPosition(160, 60));
+    this.spawn("npc.guard_bot", "guard_001", placedPosition(119, 88));
+    this.spawn("object.gacha", "gacha_001", placedPosition(112, 84));
+    this.spawn("item.token", "token_001", placedPosition(111, 86));
+    this.spawn("object.road", "road_001", placedPosition(114, 88));
+    const portalA = this.spawn("object.portal", "portal_a", placedPosition(110, 85));
+    const portalB = this.spawn("object.portal", "portal_b", placedPosition(210, 85));
+    portalA.attributes.linkId = portalB.id;
+    portalB.attributes.linkId = portalA.id;
   }
 
   admitVisitor(name: string): RuntimeEntity {
@@ -182,6 +216,8 @@ export class WorldSimulation implements SimStore, SpeechPort {
     this.dispatchInbox();
     const commands = this.collectCommands();
     for (const command of commands) this.executeCommand(command);
+    tickStatuses(this);
+    fireTickEffects(this);
     this.processEvents();
     this.flushBroadcasts();
 
@@ -298,7 +334,7 @@ export class WorldSimulation implements SimStore, SpeechPort {
       for (const entityId of chunk.spatial.candidates(position, radius)) {
         if (seen.has(entityId)) continue;
         const entity = this.live(entityId);
-        if (!entity) continue;
+        if (!entity || entity.containedIn) continue;
         seen.add(entityId);
         if (manhattan(position, entity.position) <= radius) found.push(entity);
       }
@@ -306,12 +342,16 @@ export class WorldSimulation implements SimStore, SpeechPort {
     return found;
   }
 
-  applyDamage(target: RuntimeEntity, damage: number, sourceId: string, destroy = false): void {
-    applyDamageTo(this, target, damage, sourceId, destroy);
+  applyDamage(target: RuntimeEntity, damage: number, sourceId: string, destroy = false, damageType = "kinetic"): void {
+    applyDamageTo(this, target, damage, sourceId, destroy, damageType);
   }
 
-  applyEffects(entity: RuntimeEntity, trigger: string, parent: WorldSimEvent): void {
-    applyEffectsTo(this, entity, trigger, parent);
+  applyEffects(entity: RuntimeEntity, trigger: string, parent: WorldSimEvent, actor?: RuntimeEntity): void {
+    applyEffectsTo(this, entity, trigger, parent, actor);
+  }
+
+  liveAll(): RuntimeEntity[] {
+    return [...this.entities.values()];
   }
 
   nextSpeechId(): string {
@@ -427,7 +467,18 @@ export class WorldSimulation implements SimStore, SpeechPort {
     else if (verb === "attack" || verb === "chop") executeAttack(this, command, actor, target);
     else if (verb === "destroy") executeDestroy(this, command, actor, target);
     else if (verb === "pickup") executePickup(this, command, actor, target);
-    else this.reject(command, `unknown interaction: ${verb}`);
+    else if (verb === "rest") executeRest(this, command, actor);
+    else if (verb === "collect") {
+      const completed = this.emit({
+        type: "interaction_completed",
+        sourceId: actor.id,
+        targetId: target.id,
+        depth: 0,
+        priority: EVENT_PRIORITY.player,
+        payload: { action: "collect", commandId: command.id },
+      });
+      this.applyEffects(target, "use:collect", completed, actor);
+    } else this.reject(command, `unknown interaction: ${verb}`);
   }
 
   private processEvents(): void {
@@ -444,7 +495,7 @@ export class WorldSimulation implements SimStore, SpeechPort {
 
   private scheduleBehaviors(): void {
     for (const entity of this.entities.values()) {
-      const command = planBehavior(entity, this.tickCount);
+      const command = planBehavior(entity, this.tickCount, this);
       if (command) this.submitCommand(command);
     }
   }
@@ -464,7 +515,7 @@ export class WorldSimulation implements SimStore, SpeechPort {
       sourceId: event.sourceId,
       targetId: event.targetId,
       origin: { ...origin },
-      radius: BROADCAST_RADIUS[event.type] ?? 6,
+      radius: typeof event.payload?.radius === "number" ? event.payload.radius : BROADCAST_RADIUS[event.type] ?? 6,
       priority: event.priority,
       startedAtTick: this.tickCount,
       expiresAtTick: this.tickCount + (event.durationTicks ?? PUBLIC_EVENT_DURATION_TICKS[event.type] ?? 1),

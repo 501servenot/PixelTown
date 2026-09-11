@@ -4,6 +4,7 @@ import type { EntityDefinition, EntityType } from "../domain/entity";
 
 const ENTITY_TYPES: EntityType[] = ["player", "agent", "npc", "animal", "building", "item", "resource", "object"];
 
+/** 配方目录：加载并持有 entities/*.json 的全部配方（EntityDefinition）；取用一律返回深拷贝，防止运行时被篡改。 */
 export class EntityCatalog {
   private readonly definitions = new Map<string, EntityDefinition>();
 

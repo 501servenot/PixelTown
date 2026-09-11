@@ -14,7 +14,7 @@ import {
   type AgentTurnLast,
 } from "../shared/agent-io";
 import { TICK_MS, type WorldSimulation } from "../world";
-import { toCommand, toHeard, toPerception, toTurn } from "./agent-adapter";
+import { toCommand, toHeard, toOverheard, toPerception, toTurn } from "./agent-adapter";
 import { randomBytes } from "node:crypto";
 import { readApiKey, type AgentKeyStore } from "./auth";
 import { AgentSessionStore, type AgentSession } from "./agent-session";
@@ -369,7 +369,7 @@ export function createAgentGateway(simulation: WorldSimulation, keys: AgentKeySt
       simulation.subscribeBroadcast((broadcasts) => {
         for (const broadcast of broadcasts) {
           for (const observer of simulation.getNearbyObservers(broadcast.origin, broadcast.radius)) {
-            if (observer.type === "agent") eventBox.enqueueHeard(observer.id, toHeard(broadcast));
+            if (observer.type === "agent" && observer.id !== broadcast.sourceId) eventBox.enqueueHeard(observer.id, toHeard(broadcast));
           }
         }
         for (const actorId of new Set(broadcasts.flatMap((broadcast) => simulation.getNearbyObservers(broadcast.origin, broadcast.radius).filter((observer) => observer.type === "agent").map((observer) => observer.id)))) {
@@ -383,6 +383,17 @@ export function createAgentGateway(simulation: WorldSimulation, keys: AgentKeySt
         if (target?.type === "agent") eventBox.enqueueSaid(line.toId, { id: line.id, from: line.fromId, name: line.fromName, text: line.text, tick: line.tick });
         wakeActor(line.toId, "said");
         pushQueued(line.toId);
+
+        const origin = line.origin ?? simulation.getEntity(line.fromId)?.position;
+        const radius = line.audibleRadius ?? 0;
+        if (!origin || radius <= 0) return;
+        const nearby = simulation.getNearbyObservers(origin, radius)
+          .filter((observer) => observer.type === "agent" && observer.id !== line.fromId && observer.id !== line.toId);
+        for (const observer of nearby) eventBox.enqueueHeard(observer.id, toOverheard(line));
+        for (const observer of nearby) {
+          wakeActor(observer.id, "heard");
+          pushQueued(observer.id);
+        }
       });
 
       function pushQueued(actorId: string): void {

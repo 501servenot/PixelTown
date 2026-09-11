@@ -11,6 +11,8 @@ import type {
 } from "../shared/agent-io";
 import type { AgentObservation } from "../world/perception/observe";
 import type { WorldBroadcast } from "../world/perception/public-event";
+import { TALK_AUDIBLE_DURATION_TICKS } from "../world/perception/speech";
+import type { SpeechLine } from "../world/perception/speech";
 import type { Command } from "../world/domain/command";
 
 export function toPerception(observation: AgentObservation): AgentPerception {
@@ -42,7 +44,24 @@ export function toHeard(item: WorldBroadcast): AgentHeardView {
     priority: item.priority,
     startedAtTick: item.startedAtTick,
     expiresAtTick: item.expiresAtTick,
+    from: item.sourceId,
     about: item.targetId ?? item.sourceId,
+  };
+}
+
+/** Converts a transient nearby speech delivery into the existing heard channel. */
+export function toOverheard(line: SpeechLine): AgentHeardView {
+  return {
+    id: line.id,
+    tick: line.tick,
+    type: "speech_overheard",
+    text: `${line.fromName} 说道：“${line.text}”`,
+    priority: 1,
+    startedAtTick: line.tick,
+    expiresAtTick: line.tick + TALK_AUDIBLE_DURATION_TICKS,
+    from: line.fromId,
+    name: line.fromName,
+    about: line.fromId,
   };
 }
 

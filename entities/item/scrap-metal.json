@@ -1,0 +1,20 @@
+{
+  "id": "item.scrap_metal",
+  "version": 2,
+  "type": "item",
+  "name": "废铁",
+  "description": "保安机器人拆开后留下的金属碎片。",
+  "material": "metal",
+  "render": { "assetKey": "fallback", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 1, "height": 1, "solid": false },
+  "attributes": { "stack": 1, "movable": true, "collision": false },
+  "tags": ["item", "loot"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null },
+  "behavior": { "tickRate": 0, "actions": [] },
+  "interaction": {
+    "enabled": true,
+    "range": 1,
+    "actions": [{ "type": "pickup", "targetTypes": ["player", "agent"] }]
+  },
+  "effects": []
+}

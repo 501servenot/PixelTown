@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 export const SESSION_TTL_MS = 30 * 60 * 1000;
 
+/** 一个 Agent 会话：绑定 actorId，记录回合号、过期时间与是否正等待 Agent 回复。 */
 export interface AgentSession {
   id: string;
   token: string;
@@ -11,6 +12,7 @@ export interface AgentSession {
   awaitingReply: boolean;
 }
 
+/** 会话存储：按 token 与 actorId 双索引管理 AgentSession；同一 actor 重连时关闭旧会话或原地续用。 */
 export class AgentSessionStore {
   private readonly byToken = new Map<string, AgentSession>();
   private readonly byActor = new Map<string, AgentSession>();

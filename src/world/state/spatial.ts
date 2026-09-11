@@ -11,10 +11,7 @@ function cellOf(position: Pick<WorldPosition, "x" | "y">): { cx: number; cy: num
   };
 }
 
-/**
- * Per-chunk grid. Nearby queries only inspect the cells that actually overlap
- * the radius, instead of walking every entity in the chunk.
- */
+/** chunk 内部的网格索引：邻近查询只扫描半径实际覆盖到的格子，而不是遍历 chunk 里的每个实体。 */
 export class SpatialIndex {
   private readonly cells = new Map<string, Set<string>>();
   private readonly locations = new Map<string, string>();

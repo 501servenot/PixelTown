@@ -1,0 +1,26 @@
+{
+  "id": "object.road",
+  "version": 2,
+  "type": "object",
+  "name": "道路",
+  "description": "一段可以走上去的街区道路。踏上会发出一声轻响。",
+  "material": "concrete",
+  "render": { "assetKey": "road", "scale": 1, "anchor": "foot", "layer": "ground" },
+  "collider": { "width": 3, "height": 2, "solid": false },
+  "attributes": {
+    "footprintWidth": 3,
+    "footprintHeight": 2,
+    "collision": false,
+    "movable": false
+  },
+  "tags": ["path"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null },
+  "behavior": { "tickRate": 0, "actions": [] },
+  "interaction": { "enabled": false, "range": 0, "actions": [] },
+  "effects": [
+    {
+      "trigger": "enter",
+      "do": [{ "op": "emit", "signal": "sound", "text": "脚步踩上了道路", "radius": 4 }]
+    }
+  ]
+}

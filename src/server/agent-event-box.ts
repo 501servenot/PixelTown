@@ -1,14 +1,17 @@
 import type { AgentHeardView, AgentSaidView } from "../shared/agent-io";
 
+/** 暂存箱里的一条内容：heard 公共事件或 said 私聊的二选一联合。 */
 type BoxItem = { kind: "heard"; value: AgentHeardView } | { kind: "said"; value: AgentSaidView };
+/** 从暂存箱读出的一批事件：heard 按优先级、said 按时间排序后的两列视图。 */
 export interface AgentEventBoxRead { heard: AgentHeardView[]; said: AgentSaidView[] }
 
+/** Agent 思考期间事件的暂存箱：heard/said 按 actor 缓存，等 Agent 拉取或 WS 空闲时推送；超长时丢弃最低优先级的 heard。 */
 export class AgentEventBox {
   private readonly boxes = new Map<string, BoxItem[]>();
   constructor(private readonly limit = 32) {}
   enqueueHeard(actorId: string, value: AgentHeardView): void {
     const items = this.boxes.get(actorId) ?? [];
-    const existing = items.find((item): item is Extract<BoxItem, { kind: "heard" }> => item.kind === "heard" && item.value.tick === value.tick && item.value.type === value.type && item.value.about === value.about);
+    const existing = items.find((item): item is Extract<BoxItem, { kind: "heard" }> => item.kind === "heard" && (item.value.id === value.id || (value.type !== "speech_overheard" && item.value.tick === value.tick && item.value.type === value.type && item.value.about === value.about)));
     if (existing) existing.value.count = (existing.value.count ?? 1) + 1;
     else items.push({ kind: "heard", value });
     this.trim(items);

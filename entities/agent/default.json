@@ -1,25 +1,27 @@
 {
   "id": "agent.default",
-  "version": 1,
+  "version": 2,
   "type": "agent",
   "name": "Agent",
   "description": "通过观察、Command 和公共事件参与世界的 Agent",
+  "material": "flesh",
+  "render": { "assetKey": "agent", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 1, "height": 1, "solid": true },
   "attributes": {
     "health": 100,
     "maxHealth": 100,
     "energy": 100,
-    "speed": 3
+    "speed": 3,
+    "footprintWidth": 1,
+    "footprintHeight": 1,
+    "collision": true,
+    "movable": true,
+    "capacity": 3,
+    "vision": 8
   },
-  "state": {
-    "status": "alive",
-    "activity": "idle",
-    "targetId": null,
-    "facing": "east"
-  },
-  "behavior": {
-    "tickRate": 2,
-    "actions": []
-  },
+  "tags": ["agent"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null, "facing": "east" },
+  "behavior": { "tickRate": 0, "actions": [] },
   "interaction": {
     "enabled": true,
     "range": 3,

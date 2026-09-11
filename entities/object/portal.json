@@ -1,0 +1,32 @@
+{
+  "id": "object.portal",
+  "version": 2,
+  "type": "object",
+  "name": "传送门",
+  "description": "一座绿色漩涡。踏上去会被送到配对的那一扇门旁边。",
+  "material": "energy",
+  "render": { "assetKey": "portal", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 1, "height": 2, "solid": false },
+  "attributes": {
+    "health": 80,
+    "maxHealth": 80,
+    "footprintWidth": 1,
+    "footprintHeight": 2,
+    "collision": false,
+    "movable": false
+  },
+  "tags": ["portal"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null },
+  "behavior": { "tickRate": 0, "actions": [] },
+  "interaction": { "enabled": false, "range": 0, "actions": [] },
+  "effects": [
+    {
+      "trigger": "enter",
+      "condition": { "linkAlive": true },
+      "do": [
+        { "op": "transfer", "what": "actor", "to": "link" },
+        { "op": "emit", "signal": "sound", "text": "传送门嗡的一声把人送走了", "radius": 8 }
+      ]
+    }
+  ]
+}

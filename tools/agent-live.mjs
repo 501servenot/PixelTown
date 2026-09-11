@@ -19,6 +19,7 @@ let busy = false;
 let lastTalkAt = 0;
 let heading = "east";
 let steps = 0;
+const handledTargets = new Set();
 
 function log(...args) {
   console.log(new Date().toISOString(), ...args);
@@ -65,7 +66,10 @@ function shouldStartTalk(turn) {
 
 function wanderIntent(turn) {
   const chop = turn.see?.find((item) => item.youCan?.some((verb) => verb.verb === "chop" && verb.inRange));
-  if (chop) return { think: "树在范围内", do: "use", target: chop.id, verb: "chop", expect: chop.version };
+  if (chop && !handledTargets.has(chop.id)) {
+    handledTargets.add(chop.id);
+    return { think: "树在范围内，先处理一次", do: "use", target: chop.id, verb: "chop", expect: chop.version };
+  }
   const pickup = turn.see?.find((item) => item.youCan?.some((verb) => verb.verb === "pickup" && verb.inRange));
   if (pickup) return { think: "地上有东西", do: "use", target: pickup.id, verb: "pickup", expect: pickup.version };
   if ((turn.see ?? []).filter((item) => item.kind !== "agent").length === 0 && steps % 5 === 4) {

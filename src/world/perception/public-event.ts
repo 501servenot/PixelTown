@@ -1,6 +1,7 @@
 import { CHUNK_SIZE, chunkIdAt, manhattan, type WorldPosition } from "../domain/entity";
 import type { Chunk } from "../state/chunk";
 
+/** 一条公共广播（heard 通道的内容）：带原点、半径与存活 tick 数，范围内的观察者都能听到。 */
 export interface WorldBroadcast {
   id: string;
   tick: number;
@@ -16,19 +17,21 @@ export interface WorldBroadcast {
   payload?: Record<string, number | string | boolean | null>;
 }
 
-export const PUBLIC_BROADCASTS = new Set(["entity_damaged", "entity_destroyed", "entity_shouted"]);
+export const PUBLIC_BROADCASTS = new Set(["entity_damaged", "entity_destroyed", "entity_shouted", "entity_emitted"]);
 
 /** Duration is expressed in simulation ticks; one tick is 50ms. */
 export const PUBLIC_EVENT_DURATION_TICKS: Record<string, number> = {
   entity_damaged: 1,
   entity_destroyed: 40,
   entity_shouted: 20,
+  entity_emitted: 20,
 };
 
 export const BROADCAST_RADIUS: Record<string, number> = {
   entity_damaged: 8,
   entity_destroyed: 8,
   entity_shouted: 24,
+  entity_emitted: 8,
 };
 
 export function heardBroadcast(listener: Pick<WorldPosition, "x" | "y">, broadcast: WorldBroadcast): boolean {
@@ -45,6 +48,7 @@ export function broadcastMessage(
   if (eventType === "entity_damaged") return `${source} 对 ${target} 造成了 ${payload?.damage ?? "?"} 点伤害`;
   if (eventType === "entity_destroyed") return `${target} 被摧毁了`;
   if (eventType === "entity_shouted") return `${source} 喊道：“${payload?.text ?? ""}”`;
+  if (eventType === "entity_emitted") return String(payload?.text ?? `${source} 发出了声音`);
   if (eventType === "entity_moved") return `${source} 移动到了 (${payload?.x ?? "?"}, ${payload?.y ?? "?"})`;
   if (eventType === "entity_state_changed") return `${target} 现在是 ${payload?.activity ?? "未知状态"}`;
   if (eventType === "interaction_completed") {
@@ -56,7 +60,7 @@ export function broadcastMessage(
   return `${source} 影响了 ${target}`;
 }
 
-/** Global event records with per-chunk indexes for spatial lookup. */
+/** 公共广播的全局登记表：按 chunk 建空间索引、按过期 tick 分桶，支撑 heard 的范围查询与自动过期清理。 */
 export class PublicEventManager {
   private readonly events = new Map<string, WorldBroadcast>();
   private readonly expiryBuckets = new Map<number, Set<string>>();

@@ -1,23 +1,20 @@
 {
   "id": "item.wood",
-  "version": 1,
+  "version": 2,
   "type": "item",
   "name": "Wood",
   "description": "从树上掉下来的木材",
-  "attributes": {
-    "stack": 1
-  },
-  "state": {
-    "status": "alive",
-    "activity": "idle",
-    "targetId": null
-  },
+  "material": "wood",
+  "render": { "assetKey": "fallback", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 1, "height": 1, "solid": false },
+  "attributes": { "stack": 1, "movable": true, "collision": false },
+  "tags": ["item", "resource"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null },
+  "behavior": { "tickRate": 0, "actions": [] },
   "interaction": {
     "enabled": true,
     "range": 1,
-    "actions": [
-      { "type": "pickup", "targetTypes": ["player", "agent"] }
-    ]
+    "actions": [{ "type": "pickup", "targetTypes": ["player", "agent"] }]
   },
   "effects": []
 }

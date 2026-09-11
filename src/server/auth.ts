@@ -1,11 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 
+/** 一条 apiKey 绑定记录：密钥、绑定的 actorId 与显示名；auth 据此把请求归到世界中的具体实体。 */
 export interface AgentCredential {
   key: string;
   actorId: string;
   name: string;
 }
 
+/** apiKey 存储：把 apiKey 绑定到 actorId；查询用常数时间比较，防时序侧信道。 */
 export class AgentKeyStore {
   private readonly keys = new Map<string, AgentCredential>();
 
@@ -64,6 +66,7 @@ export function readApiKey(headers: { get(name: string): string | null } | Incom
   return header(headers, "x-api-key")?.trim() || undefined;
 }
 
+/** Node HTTP 原始请求头的结构类型；与 fetch 风格 Headers 并列，作为 readApiKey 的两种可接受入参之一。 */
 type IncomingHeaders = { [key: string]: string | string[] | undefined };
 
 function header(headers: { get(name: string): string | null } | IncomingHeaders, name: string): string | undefined {

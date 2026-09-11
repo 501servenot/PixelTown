@@ -1,38 +1,41 @@
 {
   "id": "animal.cat",
-  "version": 1,
+  "version": 2,
   "type": "animal",
   "name": "Cat",
   "description": "一只会在街区闲逛的猫",
-  "position": {
-    "x": 122,
-    "y": 86,
-    "chunkId": "chunk_1_1"
-  },
+  "material": "flesh",
+  "render": { "assetKey": "fallback", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 1, "height": 1, "solid": true },
   "attributes": {
     "health": 60,
     "maxHealth": 60,
     "energy": 100,
-    "speed": 5
+    "speed": 5,
+    "footprintWidth": 1,
+    "footprintHeight": 1,
+    "collision": true,
+    "movable": true,
+    "mass": 4
   },
-  "state": {
-    "status": "alive",
-    "activity": "idle",
-    "targetId": null
-  },
+  "tags": ["animal", "pet"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null, "facing": "east" },
   "behavior": {
     "tickRate": 2,
     "actions": [
       { "type": "wander", "enabled": true },
-      { "type": "rest", "enabled": true }
+      { "type": "rest", "enabled": true, "condition": { "energy<": 25 } }
     ]
   },
   "interaction": {
     "enabled": true,
     "range": 2,
-    "actions": [
-      { "type": "talk", "targetTypes": ["player", "npc"] }
-    ]
+    "actions": [{ "type": "talk", "targetTypes": ["player", "npc"] }]
   },
-  "effects": []
+  "effects": [
+    {
+      "trigger": "damaged",
+      "do": [{ "op": "status", "name": "alert", "target": "self", "duration": 80 }]
+    }
+  ]
 }

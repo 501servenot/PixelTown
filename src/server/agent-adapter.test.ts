@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { WorldSimulation } from "../world";
 import { isAgentIntent, parseAgentReply } from "../shared/agent-io";
-import { toCommand, toPerception, toTurn } from "./agent-adapter";
+import { toCommand, toOverheard, toPerception, toTurn } from "./agent-adapter";
 
 function starter(): WorldSimulation {
   const world = new WorldSimulation();
@@ -101,5 +101,28 @@ describe("agent adapter", () => {
     assert.equal(turn.turn, 1);
     assert.equal(turn.you.id, "agent_001");
     assert.equal(turn.priority, "idle");
+  });
+
+  it("projects talk into a short-lived nearby heard event", () => {
+    const heard = toOverheard({
+      id: "say_1",
+      tick: 10,
+      fromId: "agent_001",
+      fromName: "Scout",
+      toId: "agent_002",
+      text: "你好",
+    });
+    assert.deepEqual(heard, {
+      id: "say_1",
+      tick: 10,
+      type: "speech_overheard",
+      text: "Scout 说道：“你好”",
+      priority: 1,
+      startedAtTick: 10,
+      expiresAtTick: 30,
+      from: "agent_001",
+      name: "Scout",
+      about: "agent_001",
+    });
   });
 });

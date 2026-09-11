@@ -1,41 +1,33 @@
 {
   "id": "object.tree",
-  "version": 1,
+  "version": 2,
   "type": "object",
   "name": "Oak Tree",
   "description": "一棵可以砍伐的橡树",
-  "position": {
-    "x": 121,
-    "y": 85,
-    "chunkId": "chunk_1_1"
-  },
+  "material": "wood",
+  "render": { "assetKey": "tree", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 3, "height": 3, "solid": true },
   "attributes": {
     "health": 100,
     "maxHealth": 100,
-    "wood": 50
+    "wood": 50,
+    "footprintWidth": 3,
+    "footprintHeight": 3,
+    "collision": true,
+    "movable": false
   },
-  "state": {
-    "status": "alive",
-    "activity": "idle",
-    "targetId": null
-  },
-  "behavior": {
-    "tickRate": 0,
-    "actions": []
-  },
+  "tags": ["plant", "resource"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null },
+  "behavior": { "tickRate": 0, "actions": [] },
   "interaction": {
     "enabled": true,
     "range": 2,
-    "actions": [
-      { "type": "chop", "targetTypes": ["player", "agent"] }
-    ]
+    "actions": [{ "type": "chop", "targetTypes": ["player", "agent"] }]
   },
   "effects": [
     {
       "trigger": "destroyed",
-      "type": "spawn",
-      "entityType": "item.wood",
-      "count": 10
+      "do": [{ "op": "spawn", "entityType": "item.wood", "count": 10 }]
     }
   ]
 }

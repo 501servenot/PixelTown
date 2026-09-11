@@ -1,3 +1,4 @@
+/** 世界事件的类型词表：世界中可发生的全部事件种类。 */
 export type EventType =
   | "entity_created"
   | "entity_removed"
@@ -6,6 +7,7 @@ export type EventType =
   | "entity_destroyed"
   | "entity_state_changed"
   | "entity_shouted"
+  | "entity_emitted"
   | "interaction_completed";
 
 export const EVENT_PRIORITY = {
@@ -20,6 +22,7 @@ export const EVENT_PRIORITY = {
 export const MAX_EVENT_DEPTH = 8;
 export const MAX_EVENTS_PER_TICK = 10_000;
 
+/** 世界事件：系统之间唯一的通信方式；带 depth 与 parentEventId 记录因果链，配合 maxEventDepth / maxEventsPerTick 防链式爆炸。 */
 export interface WorldSimEvent {
   id: string;
   type: EventType;
@@ -33,6 +36,7 @@ export interface WorldSimEvent {
   payload?: Record<string, number | string | boolean | null>;
 }
 
+/** 事件缓冲与调度器：按优先级和时间成批派发，单 tick 超预算的事件顺延到下一批，深度超 maxEventDepth 的直接丢弃。 */
 export class EventQueue {
   private readonly current: WorldSimEvent[] = [];
   private readonly overflow: WorldSimEvent[] = [];

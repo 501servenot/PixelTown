@@ -1,7 +1,7 @@
 import type { Command } from "../domain/command";
 import type { RuntimeEntity } from "../domain/entity";
 import { EVENT_PRIORITY } from "../domain/event";
-import { MAX_TALK_CHARS, type SpeechLine } from "../perception/speech";
+import { MAX_TALK_CHARS, TALK_AUDIBLE_RADIUS, type SpeechLine } from "../perception/speech";
 import type { SimStore, SpeechPort } from "./host";
 
 export function executeTalk(host: SimStore & SpeechPort, command: Command, actor: RuntimeEntity, target: RuntimeEntity): void {
@@ -41,6 +41,8 @@ export function deliverSpeech(host: SpeechPort, actor: RuntimeEntity, target: Ru
     fromName: actor.name,
     toId: target.id,
     text,
+    origin: { ...actor.position },
+    audibleRadius: TALK_AUDIBLE_RADIUS,
   };
   host.pushSpeech(line);
 }

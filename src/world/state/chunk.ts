@@ -2,6 +2,7 @@ import { CommandQueue } from "../domain/command";
 import type { RuntimeEntity, WorldPosition } from "../domain/entity";
 import { SpatialIndex } from "./spatial";
 
+/** 64×64 格的空间分区：持有本区实体、空间索引、命令队列与公共事件索引；Command 按 actor 所在 chunk 分发。 */
 export class Chunk {
   readonly id: string;
   readonly commands = new CommandQueue();

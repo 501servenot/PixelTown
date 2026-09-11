@@ -1,10 +1,9 @@
-import type { Command } from "../domain/command";
-import { instantiate, numberAttr, placedPosition, type RuntimeEntity, type WorldPosition } from "../domain/entity";
+import { instantiate, placedPosition, type RuntimeEntity, type WorldPosition } from "../domain/entity";
 import { EVENT_PRIORITY, type WorldSimEvent } from "../domain/event";
 import type { EntityCatalog } from "../state/catalog";
 import type { SimStore } from "./host";
 
-export function addEntity(host: SimStore, entity: RuntimeEntity): void {
+export function addEntity(host: SimStore, entity: RuntimeEntity): RuntimeEntity {
   if (host.live(entity.id)) throw new Error(`Entity already exists: ${entity.id}`);
   const placed = {
     ...entity,
@@ -21,14 +20,13 @@ export function addEntity(host: SimStore, entity: RuntimeEntity): void {
     priority: EVENT_PRIORITY.gameplay,
     payload: { type: placed.type, chunkId: placed.position.chunkId },
   });
+  return placed;
 }
 
 export function spawnEntity(host: SimStore, catalog: EntityCatalog, definitionId: string, id: string, position: WorldPosition): RuntimeEntity {
   const definition = catalog.get(definitionId);
   if (!definition) throw new Error(`Unknown entity definition: ${definitionId}`);
-  const entity = instantiate(definition, id, position);
-  addEntity(host, entity);
-  return entity;
+  return addEntity(host, instantiate(definition, id, position));
 }
 
 export function removeEntity(host: SimStore, entityId: string, sourceId?: string, parent?: WorldSimEvent): RuntimeEntity | undefined {
@@ -48,18 +46,4 @@ export function removeEntity(host: SimStore, entityId: string, sourceId?: string
   return entity;
 }
 
-export function executePickup(host: SimStore, command: Command, actor: RuntimeEntity, target: RuntimeEntity): void {
-  const stack = numberAttr(actor, "carried", 0) + numberAttr(target, "stack", 1);
-  actor.attributes.carried = stack;
-  actor.version += 1;
-  host.markDirty(actor.id);
-  host.emit({
-    type: "interaction_completed",
-    sourceId: actor.id,
-    targetId: target.id,
-    depth: 0,
-    priority: EVENT_PRIORITY.player,
-    payload: { action: "pickup", commandId: command.id },
-  });
-  host.removeEntity(target.id, actor.id);
-}
+export { executePickup } from "./contain";

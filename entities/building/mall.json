@@ -1,0 +1,29 @@
+{
+  "id": "building.mall",
+  "version": 2,
+  "type": "building",
+  "name": "生活商场",
+  "description": "一座可进入并休息的城市商场",
+  "material": "concrete",
+  "render": { "assetKey": "mall", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 25, "height": 25, "solid": false },
+  "attributes": {
+    "category": "mall",
+    "footprintWidth": 25,
+    "footprintHeight": 25,
+    "collision": false,
+    "movable": false,
+    "canRest": true,
+    "capacity": 80,
+    "influenceRadius": 0
+  },
+  "tags": ["building", "shelter"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null },
+  "behavior": { "tickRate": 0, "actions": [] },
+  "interaction": {
+    "enabled": true,
+    "range": 1,
+    "actions": [{ "type": "rest", "targetTypes": ["player", "agent"] }]
+  },
+  "effects": []
+}

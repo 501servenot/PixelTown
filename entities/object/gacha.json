@@ -1,0 +1,49 @@
+{
+  "id": "object.gacha",
+  "version": 2,
+  "type": "object",
+  "name": "扭蛋机",
+  "description": "投入一枚代币，随机掉出一颗扭蛋。",
+  "material": "metal",
+  "render": { "assetKey": "gacha", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 2, "height": 2, "solid": true },
+  "attributes": {
+    "health": 80,
+    "maxHealth": 80,
+    "footprintWidth": 2,
+    "footprintHeight": 2,
+    "collision": true,
+    "movable": false,
+    "mass": 200
+  },
+  "tags": ["machine", "vendor"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null },
+  "behavior": { "tickRate": 0, "actions": [] },
+  "interaction": {
+    "enabled": true,
+    "range": 2,
+    "actions": [{ "type": "collect", "targetTypes": ["player", "agent"] }]
+  },
+  "tables": {
+    "prizes": [
+      { "entityType": "item.capsule_common", "weight": 70 },
+      { "entityType": "item.capsule_rare", "weight": 25 },
+      { "entityType": "item.capsule_legend", "weight": 5 }
+    ]
+  },
+  "effects": [
+    {
+      "trigger": "use:collect",
+      "condition": { "actorHolds": "item.token" },
+      "do": [
+        { "op": "destroy", "what": "actor.heldItem" },
+        { "op": "spawn", "fromTable": "prizes" },
+        { "op": "emit", "signal": "sound", "text": "咔哒——一颗扭蛋掉了出来", "radius": 6 }
+      ]
+    },
+    {
+      "trigger": "destroyed",
+      "do": [{ "op": "spawn", "entityType": "item.token", "count": 1 }]
+    }
+  ]
+}

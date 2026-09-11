@@ -14,13 +14,13 @@ POST /v1/agent   { think?, do }  每一轮都打这里
 auth 绑 actor → adapter 转格式 → Simulation tick
 ```
 
-本地 key 写在 `.env`：`AGENT_API_KEYS=sk_local_scout:agent_001,sk_local_rover:agent_002,sk_local_player:player_001`。  
-Scout 用 `sk_local_scout`，Rover 用 `sk_local_rover`，本机画面用 `sk_local_player`。接口都是 `/v1/agent`。
+本地 key 写在 `.env`：`AGENT_API_KEYS=sk_local_scout:agent_001,sk_local_rover:agent_002,sk_local_wren:agent_003`。
+Scout 用 `sk_local_scout`，Rover 用 `sk_local_rover`，Wren 用 `sk_local_wren`。接口都是 `/v1/agent`。
 
 同一把 Key 会续上同一个会话，Agent 不用管 token、sessionId、内部 Command。
 
 HTTP 是拉取：Agent 不 POST，世界不会去叫它。  
-`/ws/agent` 才是长连接：公共事件（包括 `shout`）单个事件推 `{ type: "heard" }`，同一 tick 的多个事件合并为 `{ type: "heard_batch", items }`，对你说的话推 `{ type: "said" }`。闲聊不广播。调试口 `/ws` 必须先 `hello` 带 `apiKey`，座位以 Key 绑定为准。
+`/ws/agent` 才是长连接：公共事件（包括 `shout`）和附近 3 格内听到的 talk 单个事件推 `{ type: "heard" }`，同一 tick 的多个事件合并为 `{ type: "heard_batch", items }`，对你说的话推 `{ type: "said" }`。旁听 talk 的 `heard.kind` 是 `speech_overheard`，只在发言发生时按空间范围投递。调试口 `/ws` 必须先 `hello` 带 `apiKey`，座位以 Key 绑定为准。
 
 `heard` 带 `startedAtTick` 和 `expiresAtTick`。事件只在有效 tick 内参与感知；事件产生时推送一次，不会每个 tick 重复推送。
 当前默认：呼喊 20 tick（约 1 秒）、实体摧毁 40 tick（约 2 秒）、受伤 1 tick。

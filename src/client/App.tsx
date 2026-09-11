@@ -1,269 +1,125 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ClientMessage, ServerMessage, SimCommandType, SimSnapshot } from "../shared/protocol";
+import Phaser from "phaser";
+import type { ClientMessage, ServerMessage, SimSnapshot } from "../shared/protocol";
+import { TownScene } from "./game/TownScene";
 
 const PLAYER_ID = "player_001";
 const PLAYER_KEY = import.meta.env.VITE_PLAYER_KEY ?? "sk_local_player";
-const TICK_HZ = 20;
+const MOVE_KEYS: Record<string, { dx: number; dy: number }> = {
+  ArrowUp: { dx: 0, dy: -1 }, w: { dx: 0, dy: -1 },
+  ArrowDown: { dx: 0, dy: 1 }, s: { dx: 0, dy: 1 },
+  ArrowLeft: { dx: -1, dy: 0 }, a: { dx: -1, dy: 0 },
+  ArrowRight: { dx: 1, dy: 0 }, d: { dx: 1, dy: 0 },
+};
 
 export default function App() {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const socketRef = useRef<WebSocket | null>(null);
   const [snapshot, setSnapshot] = useState<SimSnapshot>();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [selectedId, setSelectedId] = useState<string>("player_001");
-  const socketRef = useRef<WebSocket | undefined>(undefined);
-  const pendingRef = useRef(new Map<string, (message: ServerMessage) => void>());
+  const [chatTarget, setChatTarget] = useState<string>();
+  const [chatText, setChatText] = useState("");
+  const player = snapshot?.entities.find((entity) => entity.id === PLAYER_ID);
+  const held = snapshot?.entities.find((entity) => entity.containedIn === PLAYER_ID);
+  const targets = useMemo(() => (snapshot?.entities ?? [])
+    .filter((entity) => entity.id !== PLAYER_ID && !entity.containedIn && (entity.type === "agent" || entity.type === "object" || entity.type === "npc" || entity.type === "item"))
+    .map((entity) => ({
+      entity,
+      distance: player ? Math.abs(entity.position.x - player.position.x) + Math.abs(entity.position.y - player.position.y) : Infinity,
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 8), [snapshot, player]);
+  const selectedTarget = targets.find((item) => item.entity.id === chatTarget)?.entity;
+  const targetInRange = Boolean(selectedTarget && player &&
+    Math.abs(selectedTarget.position.x - player.position.x) + Math.abs(selectedTarget.position.y - player.position.y) <= 3);
 
   useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const scene = new TownScene();
+    const game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: host,
+      width: host.clientWidth || window.innerWidth,
+      height: host.clientHeight || window.innerHeight,
+      backgroundColor: "#ffffff",
+      scene,
+      scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.NO_CENTER },
+      render: { antialias: false, pixelArt: true, roundPixels: true },
+    });
     const socketUrl = import.meta.env.DEV
       ? "ws://127.0.0.1:3001/ws"
       : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`;
     const socket = new WebSocket(socketUrl);
     socketRef.current = socket;
+    const applySnapshot = (next: SimSnapshot) => {
+      setSnapshot(next);
+      scene.setSnapshot(next);
+    };
+    fetch("/api/sim/snapshot").then((response) => response.json() as Promise<SimSnapshot>).then(applySnapshot).catch(() => undefined);
     socket.onmessage = (message) => {
       const parsed = JSON.parse(message.data) as ServerMessage;
-      if (parsed.requestId) pendingRef.current.get(parsed.requestId)?.(parsed);
-      if (parsed.type === "sim_snapshot") setSnapshot(parsed.payload);
+      if (parsed.type === "sim_snapshot") applySnapshot(parsed.payload);
+      if (parsed.type === "speech") scene.showSpeech(parsed.payload);
+      if (parsed.type === "broadcast") scene.showBroadcast(parsed.payload);
     };
-    socket.onopen = () => {
-      setError("");
-      const requestId = crypto.randomUUID();
-      pendingRef.current.set(requestId, (incoming) => {
-        if (incoming.type === "command_result" && !incoming.payload.ok) {
-          setError(incoming.payload.error ?? "调试口握手失败");
-        }
-      });
-      socket.send(JSON.stringify({ type: "hello", requestId, apiKey: PLAYER_KEY, actorId: PLAYER_ID }));
-      fetch("/api/sim/snapshot")
-        .then((response) => response.json())
-        .then((next: SimSnapshot) => setSnapshot(next))
-        .catch(() => undefined);
-    };
-    socket.onerror = () => setError("无法连接世界");
-    const poll = window.setInterval(() => {
-      fetch("/api/sim/snapshot")
-        .then((response) => response.json())
-        .then((next: SimSnapshot) => setSnapshot(next))
-        .catch(() => undefined);
-    }, 500);
-    return () => {
-      socketRef.current = undefined;
-      socket.close();
-      window.clearInterval(poll);
-    };
+    socket.onopen = () => socket.send(JSON.stringify({
+      type: "hello", requestId: crypto.randomUUID(), apiKey: PLAYER_KEY, actorId: PLAYER_ID,
+    } satisfies ClientMessage));
+    return () => { socketRef.current = null; socket.close(); game.destroy(true); };
   }, []);
 
-  const player = snapshot?.entities.find((entity) => entity.id === PLAYER_ID);
-  const selected = snapshot?.entities.find((entity) => entity.id === selectedId) ?? player;
-  const events = snapshot?.recentEvents ?? [];
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.target as HTMLElement)?.tagName === "INPUT") return;
+      const move = MOVE_KEYS[event.key] ?? MOVE_KEYS[event.key.toLowerCase()];
+      if (!move || !player) return;
+      event.preventDefault();
+      sendCommand("move", undefined, { x: player.position.x + move.dx, y: player.position.y + move.dy });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [player]);
 
-  const nearby = useMemo(() => {
-    if (!player || !snapshot) return [];
-    return snapshot.entities.filter((entity) => {
-      if (entity.id === player.id) return false;
-      return Math.abs(entity.position.x - player.position.x) + Math.abs(entity.position.y - player.position.y) <= 3;
-    });
-  }, [player, snapshot]);
-
-  function sendSocket(message: ClientMessage): Promise<ServerMessage> {
+  function sendCommand(commandType: "move" | "interact", targetId?: string, payload?: Record<string, number | string | boolean>) {
     const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("世界连接已断开"));
-    }
-    const requestId = message.requestId ?? crypto.randomUUID();
-    return new Promise((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        pendingRef.current.delete(requestId);
-        reject(new Error("世界没有回应这次行动"));
-      }, 2000);
-      pendingRef.current.set(requestId, (incoming) => {
-        window.clearTimeout(timer);
-        pendingRef.current.delete(requestId);
-        resolve(incoming);
-      });
-      socket.send(JSON.stringify({ ...message, requestId }));
-    });
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "command", actorId: PLAYER_ID, commandType, targetId, payload, requestId: crypto.randomUUID() }));
   }
 
-  async function sendCommand(
-    commandType: SimCommandType,
-    extra: { targetId?: string; payload?: Record<string, number | string | boolean> } = {},
-  ): Promise<void> {
-    setBusy(true);
-    setError("");
-    try {
-      const incoming = await sendSocket({
-        type: "command",
-        actorId: PLAYER_ID,
-        commandType,
-        targetId: extra.targetId,
-        payload: extra.payload,
-      });
-      if (incoming.type !== "command_result") throw new Error("世界没有返回行动结果");
-      if (!incoming.payload.ok) throw new Error(incoming.payload.error ?? "命令被拒绝");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "命令执行失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function move(dx: number, dy: number): void {
-    if (!player) return;
-    void sendCommand("move", { payload: { x: player.position.x + dx, y: player.position.y + dy } });
+  function sendChat(event: React.FormEvent) {
+    event.preventDefault();
+    const text = chatText.trim();
+    if (!text || !selectedTarget || selectedTarget.type !== "agent" || !targetInRange) return;
+    sendCommand("interact", selectedTarget.id, { verb: "talk", text });
+    setChatText("");
   }
 
   return (
-    <main className="shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">PIXELTOWN / WORLD CORE</p>
-          <h1>像素小镇</h1>
-          <p className="subtitle">Chunk 权威模拟 · Command 走 WebSocket · {TICK_HZ} Hz tick</p>
-        </div>
-        <div className="world-clock">
-          <span className="live-dot" />
-          <span>世界运行中</span>
-          <strong>tick {snapshot?.tick ?? 0}</strong>
-        </div>
-      </header>
-
-      {error && <div className="error-banner">{error}</div>}
-
-      <section className="hero-grid">
-        <div className="game-card card">
-          <div className="card-heading">
-            <div>
-              <span className="kicker">CHUNK</span>
-              <h2>{player?.position.chunkId ?? "等待快照"}</h2>
-            </div>
-            <span className="state-pill">
-              {snapshot?.entityCount ?? 0} entities · {snapshot?.chunkCount ?? 0} chunks
-            </span>
-          </div>
-          <div className="entity-list">
-            {snapshot?.entities.map((entity) => (
-              <button
-                type="button"
-                className="entity-row"
-                key={entity.id}
-                onClick={() => setSelectedId(entity.id)}
-                aria-pressed={selected?.id === entity.id}
-              >
-                <span className={`entity-icon ${entity.type === "player" ? "agent" : entity.type === "object" ? "resource" : "quest"}`} />
-                <div>
-                  <strong>{entity.name}</strong>
-                  <small>
-                    {entity.type} · {entity.state.activity} · v{entity.version}
-                  </small>
-                </div>
-                <code>
-                  ({entity.position.x},{entity.position.y}) {entity.position.chunkId}
-                </code>
+    <main className="world-root">
+      <div ref={hostRef} className="world-host" />
+      <section className="player-controls" aria-label="玩家控制">
+        <div className="controls-title">PLAYER · {player?.name ?? "连接中"}</div>
+        <div className="controls-hint">WASD / 方向键移动{held ? ` · 手持 ${held.name}` : ""} · 西边有传送门</div>
+        <div className="target-list">
+          {targets.map(({ entity, distance }) => (
+            <div className="target-row" key={entity.id}>
+              <button type="button" onClick={() => (entity.type === "agent" || entity.type === "npc") && setChatTarget(entity.id)} className={chatTarget === entity.id ? "selected" : ""}>
+                {entity.name} · {distance <= 3 ? "可交互" : `${distance}格外`}
+                {entity.statuses?.some((item) => item.name === "alert") ? " · 警戒" : ""}
               </button>
-            ))}
-            {!snapshot && <p className="empty">正在接入世界…</p>}
-          </div>
-          {selected && (
-            <aside className="entity-inspect" style={{ position: "relative", top: 16, left: 0, pointerEvents: "auto" }}>
-              <p className="entity-inspect-kicker">{selected.type} · {selected.name}</p>
-              <p className="entity-inspect-summary">{selected.description || `${selected.id}`}</p>
-              <ul>
-                <li>位置 ({selected.position.x}, {selected.position.y}) · {selected.position.chunkId}</li>
-                <li>状态 {selected.state.status} / {selected.state.activity}</li>
-                <li>生命 {String(selected.attributes.health ?? "-")} / {String(selected.attributes.maxHealth ?? "-")}</li>
-                {selected.state.targetId && <li>目标 {selected.state.targetId}</li>}
-              </ul>
-            </aside>
-          )}
-        </div>
-
-        <aside className="agent-card card tool-drawer open" style={{ position: "relative", width: "auto" }}>
-          <div className="card-heading">
-            <div>
-              <span className="kicker">PLAYER</span>
-              <h2>{player?.name ?? "Player"}</h2>
+              {entity.definitionId === "object.tree" && <button type="button" onClick={() => distance <= 3 && sendCommand("interact", entity.id, { verb: "chop", damage: 20, damageType: "chop" })} disabled={distance > 3}>砍伐</button>}
+              {entity.definitionId === "object.gacha" && <button type="button" onClick={() => distance <= 3 && sendCommand("interact", entity.id, { verb: "collect" })} disabled={distance > 3 || held?.definitionId !== "item.token"}>扭蛋</button>}
+              {entity.definitionId === "npc.guard_bot" && <button type="button" onClick={() => distance <= 3 && sendCommand("interact", entity.id, { verb: "attack", damage: 20, damageType: "kinetic" })} disabled={distance > 3}>攻击</button>}
+              {entity.type === "item" && <button type="button" onClick={() => distance <= 1 && sendCommand("interact", entity.id, { verb: "pickup" })} disabled={distance > 1}>拾取</button>}
             </div>
-            <span className="agent-badge">{PLAYER_ID}</span>
-          </div>
-          <div className="agent-status">
-            <span className="status-dot" />
-            {player?.state.activity ?? "offline"}
-            <span className="status-sep">·</span>
-            能量 {String(player?.attributes.energy ?? "-")}
-          </div>
-          <div className="stat-row">
-            <span>位置</span>
-            <strong>({player?.position.x ?? "-"}, {player?.position.y ?? "-"})</strong>
-          </div>
-          <div className="button-row">
-            <button type="button" onClick={() => move(0, -1)} disabled={busy}>↑</button>
-            <button type="button" onClick={() => move(-1, 0)} disabled={busy}>←</button>
-            <button type="button" onClick={() => move(0, 1)} disabled={busy}>↓</button>
-            <button type="button" onClick={() => move(1, 0)} disabled={busy}>→</button>
-          </div>
-          <div className="button-row secondary-actions">
-            <button type="button" onClick={() => void sendCommand("talk", { targetId: "npc_001" })} disabled={busy}>
-              和 John 说话
-            </button>
-            <button type="button" onClick={() => void sendCommand("attack", { targetId: "tree_001", payload: { damage: 20 } })} disabled={busy}>
-              砍树
-            </button>
-          </div>
-        </aside>
+          ))}
+        </div>
+        {selectedTarget?.type === "agent" && (
+          <form className="chat-form" onSubmit={sendChat}>
+            <input value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder={targetInRange ? `和 ${selectedTarget.name} 说话…` : "靠近 Agent 后才能聊天"} disabled={!targetInRange} />
+            <button type="submit" disabled={!targetInRange || !chatText.trim()}>发送</button>
+          </form>
+        )}
       </section>
-
-      <section className="lower-grid">
-        <div id="observation-panel" className="card observation-card">
-          <div className="card-heading">
-            <div>
-              <span className="kicker">NEARBY</span>
-              <h2>附近 3 格</h2>
-            </div>
-          </div>
-          <div className="entity-list">
-            {nearby.map((entity) => (
-              <div className="entity-row" key={entity.id}>
-                <span className="entity-icon quest" />
-                <div>
-                  <strong>{entity.name}</strong>
-                  <small>{entity.state.activity} · hp {String(entity.attributes.health ?? "-")}</small>
-                </div>
-                <code>({entity.position.x},{entity.position.y})</code>
-              </div>
-            ))}
-            {!nearby.length && <p className="empty">附近没有其他实体</p>}
-          </div>
-        </div>
-        <div id="event-panel" className="card log-card">
-          <div className="card-heading">
-            <div>
-              <span className="kicker">EVENT STREAM</span>
-              <h2>世界事件</h2>
-            </div>
-            <span className="live-label">LIVE</span>
-          </div>
-          <div className="event-list">
-            {[...events].reverse().map((event) => (
-              <div className="event-row" key={event.id}>
-                <span className="event-time">d{event.depth}</span>
-                <span>
-                  {event.type}
-                  {event.targetId ? ` → ${event.targetId}` : ""}
-                </span>
-              </div>
-            ))}
-            {!events.length && <p className="empty">这个 tick 还没有事件。</p>}
-          </div>
-          {snapshot?.rejected.length ? (
-            <p className="helper">{snapshot.rejected.map((item) => item.reason).join("；")}</p>
-          ) : null}
-        </div>
-      </section>
-
-      <footer>
-        <span>WorldSimulation · {TICK_HZ} Hz · memory state</span>
-        <span>WebSocket commands · no login · no trading</span>
-      </footer>
     </main>
   );
 }

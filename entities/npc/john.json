@@ -1,31 +1,30 @@
 {
   "id": "npc.john",
-  "version": 1,
+  "version": 2,
   "type": "npc",
   "name": "John",
   "description": "一个生活在 Pixel City 的普通居民",
-  "position": {
-    "x": 120,
-    "y": 85,
-    "chunkId": "chunk_1_1"
-  },
+  "material": "flesh",
+  "render": { "assetKey": "fallback", "scale": 1, "anchor": "foot" },
+  "collider": { "width": 1, "height": 1, "solid": true },
   "attributes": {
     "health": 100,
     "maxHealth": 100,
     "energy": 80,
     "speed": 3,
+    "footprintWidth": 1,
+    "footprintHeight": 1,
+    "collision": true,
+    "movable": true,
     "age": 25
   },
-  "state": {
-    "status": "alive",
-    "activity": "idle",
-    "targetId": null
-  },
+  "tags": ["resident"],
+  "state": { "status": "alive", "activity": "idle", "targetId": null, "facing": "east" },
   "behavior": {
     "tickRate": 2,
     "actions": [
       { "type": "wander", "enabled": true },
-      { "type": "rest", "enabled": true }
+      { "type": "rest", "enabled": true, "condition": { "energy<": 20 } }
     ]
   },
   "interaction": {

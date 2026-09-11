@@ -40,6 +40,41 @@ describe("autonomous behavior", () => {
     assert.equal(planBehavior(entity, 4), undefined);
   });
 
+  it("does not lock wander to one compass point when tickRate is 4", () => {
+    const entity = npc([{ type: "wander", enabled: true }], 4);
+    entity.id = "guard_001";
+    const dirs = new Set<string>();
+    for (let tick = 4; tick <= 80; tick += 4) {
+      const command = planBehavior(entity, tick);
+      dirs.add(`${command?.payload?.dx},${command?.payload?.dy}`);
+    }
+    assert.ok(dirs.size >= 3, `wander only used ${[...dirs].join(" ")}`);
+  });
+
+  it("walks a short burst then stands still before the next leg", () => {
+    const entity = npc([{ type: "wander", enabled: true }], 2);
+    entity.attributes.wanderSteps = 2;
+    entity.attributes.wanderPause = 6;
+    const first = planBehavior(entity, 2);
+    const second = planBehavior(entity, 4);
+    assert.equal(first?.type, "move");
+    assert.deepEqual(second?.payload, first?.payload);
+    assert.equal(planBehavior(entity, 6), undefined);
+    assert.equal(planBehavior(entity, 8), undefined);
+    assert.equal(planBehavior(entity, 10), undefined);
+    const next = planBehavior(entity, 12);
+    assert.equal(next?.type, "move");
+  });
+
+  it("turns a leashed wanderer back toward home", () => {
+    const entity = npc([{ type: "wander", enabled: true }], 2);
+    entity.attributes.wanderRadius = 3;
+    entity.attributes.homeX = 10;
+    entity.attributes.homeY = 10;
+    entity.position = placedPosition(10, 2);
+    assert.deepEqual(planBehavior(entity, 2)?.payload, { dx: 0, dy: 1, autonomous: true });
+  });
+
   it("runs autonomous commands through the simulation tick", () => {
     const world = new WorldSimulation();
     world.seedStarterChunk();

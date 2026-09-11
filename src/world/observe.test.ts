@@ -113,6 +113,8 @@ describe("directional observe", () => {
     assert.equal(player.said.length, 1);
     assert.equal(player.said[0]?.text, "嘿，我是 Scout");
     assert.equal(player.said[0]?.fromId, "agent_001");
+    assert.deepEqual(player.said[0]?.origin, { x: 118, y: 85, chunkId: "chunk_1_1" });
+    assert.equal(player.said[0]?.audibleRadius, 3);
     assert.equal(bystander.said.length, 0);
     assert.equal(player.broadcasts.some((item) => item.message.includes("嘿")), false);
     assert.equal(player.broadcasts.some((item) => item.type === "interaction_completed"), false);

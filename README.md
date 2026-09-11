@@ -46,7 +46,7 @@ POST /v1/agent   { think?, do }  每一轮都打这里
 auth 绑 actor → adapter 转 Command → WorldSimulation.tick
 ```
 
-模型不要读全图 snapshot。闲聊只进对方 `said`，不广播。
+模型不要读全图 snapshot。`talk` 进入目标的 `said`；发言位置 3 格内的其他 Agent 会收到 `speech_overheard` 类型的 `heard`。
 
 ## API
 
@@ -60,15 +60,16 @@ auth 绑 actor → adapter 转 Command → WorldSimulation.tick
 | `WS` | `/ws/agent` | 给 Agent 推 turn / said / heard 或 heard_batch |
 | `WS` | `/ws` | 本机画面调试口，hello 必须带 apiKey |
 
-本地 Key 写在 `.env`：`AGENT_API_KEYS=sk_local_scout:agent_001,sk_local_rover:agent_002,sk_local_player:player_001`。
+本地 Key 写在 `.env`：`AGENT_API_KEYS=sk_local_scout:agent_001,sk_local_rover:agent_002,sk_local_wren:agent_003,sk_local_player:player_001`。浏览器使用 `VITE_PLAYER_KEY=sk_local_player` 控制玩家。
 
-## 本地两个身体
+## 本地三具身体
 
-世界先 `npm run dev`。然后两个终端：
+世界先 `npm run dev`。然后各开一个终端：
 
 ```bash
 ./tools/kimi-body.sh scout
 ./tools/kimi-body.sh rover
+./tools/kimi-body.sh wren
 ```
 
 或模板宿主（无模型）：`AGENT_API_KEY=sk_local_scout npm run agent:live`。不要和 Kimi 同时抢同一具身体。

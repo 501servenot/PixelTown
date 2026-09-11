@@ -11,12 +11,15 @@ export {
   isObserver,
   manhattan,
   placedPosition,
+  type EntityArchetype,
   type EntityDefinition,
+  type EntityInstance,
   type EntityType,
   type ObserveDirection,
   type RuntimeEntity,
   type WorldPosition,
 } from "./domain/entity";
+export type { ColliderComponent, EntityComponents, RenderComponent, TransformComponent } from "./domain/components";
 export {
   DEFAULT_OBSERVE_RADIUS,
   inView,
@@ -30,7 +33,7 @@ export {
   PUBLIC_EVENT_DURATION_TICKS,
   PublicEventManager,
 } from "./perception/public-event";
-export { MAX_TALK_CHARS, SpeechInbox, type SpeechLine } from "./perception/speech";
+export { MAX_TALK_CHARS, TALK_AUDIBLE_DURATION_TICKS, TALK_AUDIBLE_RADIUS, SpeechInbox, type SpeechLine } from "./perception/speech";
 export {
   EVENT_PRIORITY,
   EventQueue,
